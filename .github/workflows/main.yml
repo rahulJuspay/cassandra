@@ -23,7 +23,7 @@ jobs:
       with:
         draft: false
         prerelease: false
-        release_name: ${{ steps.version.outputs.version }}
+        release_name: Release ${{ github.ref }}
         tag_name: ${{ github.ref }}
         body_path: CONTRIBUTING.md
       env:
