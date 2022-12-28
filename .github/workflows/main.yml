@@ -17,7 +17,14 @@ jobs:
         distribution: 'adopt'
     - name: Build with Ant
       run: ant -noinput -buildfile build.xml jar -Duse.jdk11=true -Drat.skip=true
-    - uses: actions/upload-artifact@v3
+    - name: release
+      uses: actions/create-release@v1
+      id: create_release
       with:
-        name: Package
-        path: build
+        draft: false
+        prerelease: false
+        release_name: ${{ steps.version.outputs.version }}
+        tag_name: ${{ github.ref }}
+        body_path: CHANGELOG.md
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
