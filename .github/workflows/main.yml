@@ -17,3 +17,7 @@ jobs:
         distribution: 'adopt'
     - name: Build with Ant
       run: ant -noinput -buildfile build.xml -Duse.jdk11=true -Drat.skip=true
+    - uses: actions/upload-artifact@v3
+      with:
+        name: Package
+        path: build/jar
