@@ -5,6 +5,7 @@ on:
       - master
       - main
       - juspay-4.1
+      - local-test
 jobs:
   job1:
     runs-on: ubuntu-latest
