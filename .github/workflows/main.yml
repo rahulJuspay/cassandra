@@ -17,4 +17,4 @@ jobs:
         java-version: '11'
         distribution: 'adopt'
     - name: Build with Ant
-      run: ant -noinput -buildfile build.xml -Duse.jdk11=true
+      run: ant -noinput -buildfile build.xml -Duse.jdk11=true -Drat.skip=true
