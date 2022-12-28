@@ -132,3 +132,4 @@ import Parser,Lexer;
 query returns [CQLStatement.Raw stmnt]
     : st=cqlStatement (';')* EOF { $stmnt = st; }
     ;
+
