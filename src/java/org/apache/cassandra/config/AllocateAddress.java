@@ -34,7 +34,7 @@ import software.amazon.awssdk.regions.internal.util.EC2MetadataUtils;
 public class AllocateAddress {
     public static String allocateAddress() {
         try {
-            String instanceId =  "i-0a17b1a5f2662ecac";   // EC2MetadataUtils.getInstanceId(); //
+            String instanceId = EC2MetadataUtils.getInstanceId(); // "i-0a17b1a5f2662ecac";   // EC2MetadataUtils.getInstanceId(); //
             Region region = Region.AP_NORTHEAST_1;
             Ec2Client ec2 = Ec2Client.builder()
                 .region(region)
