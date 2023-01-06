@@ -4,7 +4,7 @@ on:
     branches:
       - master
       - main
-      - juspay-4.2.1.2
+      - juspay-4.3
 jobs:
   build:
     runs-on: ubuntu-latest
