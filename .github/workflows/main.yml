@@ -32,9 +32,7 @@ jobs:
       id: compress
       with:
         command: c
-        cwd: ./apache-cassandra-juspay-4.1
-        files: |
-              ./*
+        cwd: apache-cassandra-juspay-4.1
         outPath: apache-cassandra-juspay-4.1.tar.gz
     - name: release
       uses: actions/create-release@v1
