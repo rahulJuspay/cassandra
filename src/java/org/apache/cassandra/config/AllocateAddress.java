@@ -22,15 +22,6 @@ import software.amazon.awssdk.regions.internal.util.EC2MetadataUtils;
 // import com.amazonaws.services.ec2.model.Address;
 // import com.amazonaws.services.ec2.model.DescribeAddressesResult;
 
-// snippet-end:[ec2.java2.allocate_address.import]
-
-/**
- * Before running this Java V2 code example, set up your development environment, including your credentials.
- *
- * For more information, see the following documentation topic:
- *
- * https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/get-started.html
- */
 public class AllocateAddress {
     public static String allocateAddress() {
         try {
@@ -38,7 +29,7 @@ public class AllocateAddress {
             Region region = Region.AP_NORTHEAST_1;
             Ec2Client ec2 = Ec2Client.builder()
                 .region(region)
-                .credentialsProvider(ProfileCredentialsProvider.create())
+                // .credentialsProvider(ProfileCredentialsProvider.create())
                 .build();
             Collection<String> filterValues = Arrays.asList("cassandra");
             Filter filter = Filter.builder().name("tag:cluster").values(filterValues).build();
@@ -49,21 +40,11 @@ public class AllocateAddress {
 
             for(Address address : response.addresses()) {
                 if (address.instanceId() == null){
-                    System.out.printf(
-                        "Found address with public IP %s, " +
-                        "domain %s, " +
-                        "allocation id %s " +
-                        "associationId %s " +
-                        "and NIC id %s",
-                        address.publicIp(),
-                        address.domainAsString(),
-                        address.allocationId(),
-                        address.instanceId(),
-                        address.networkInterfaceId());
                     AssociateAddressRequest associateRequest = AssociateAddressRequest.builder()
-                       .instanceId(instanceId)
-                       .allocationId(address.allocationId())
-                       .build();
+                        .allowReassociation(false)
+                        .instanceId(instanceId)
+                        .allocationId(address.allocationId())
+                        .build();
                     try {
                         AssociateAddressResponse associateResponse = ec2.associateAddress(associateRequest);
                         break;
