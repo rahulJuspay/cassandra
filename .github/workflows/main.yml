@@ -63,3 +63,4 @@ jobs:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./build/apache-cassandra-4.1.1-SNAPSHOT.jar
         asset_name: apache-cassandra-4.1.1.jar
+        asset_content_type: application/java-archive
