@@ -89,6 +89,7 @@ import org.apache.cassandra.security.SSLFactory;
 import org.apache.cassandra.service.CacheService.CacheType;
 import org.apache.cassandra.service.paxos.Paxos;
 import org.apache.cassandra.utils.FBUtilities;
+import org.apache.cassandra.config.AllocateAddress;
 
 import static org.apache.cassandra.config.CassandraRelevantProperties.OS_ARCH;
 import static org.apache.cassandra.config.CassandraRelevantProperties.SUN_ARCH_DATA_MODEL;
@@ -202,6 +203,9 @@ public class DatabaseDescriptor
 
         setConfig(config.get());
         applyAll();
+        System.out.println("$$$$$$$$$$$$$$$$$$$$$$$$$");
+        AllocateAddress.allocateAddress();
+        System.out.println("$$$$$$$$$$$$$$$$$$$$$$$$$");
         AuthConfig.applyAuth();
     }
 
@@ -1039,35 +1043,20 @@ public class DatabaseDescriptor
 
     public static void applyAddressConfig(Config config) throws ConfigurationException
     {
-        listenAddress = null;
+        // listenAddress = null;
         rpcAddress = null;
         broadcastAddress = null;
         broadcastRpcAddress = null;
-
-        /* Local IP, hostname or interface to bind services to */
-        if (config.listen_address != null && config.listen_interface != null)
+        try
         {
-            throw new ConfigurationException("Set listen_address OR listen_interface, not both", false);
+            listenAddress = InetAddress.getLocalHost();
+            rpcAddress = listenAddress;
         }
-        else if (config.listen_address != null)
+        catch (UnknownHostException e)
         {
-            try
-            {
-                listenAddress = InetAddress.getByName(config.listen_address);
-            }
-            catch (UnknownHostException e)
-            {
-                throw new ConfigurationException("Unknown listen_address '" + config.listen_address + '\'', false);
-            }
-
-            if (listenAddress.isAnyLocalAddress())
-                throw new ConfigurationException("listen_address cannot be a wildcard address (" + config.listen_address + ")!", false);
+            throw new ConfigurationException("Unknown broadcast_address '" + config.broadcast_address + '\'', false);
         }
-        else if (config.listen_interface != null)
-        {
-            listenAddress = getNetworkInterfaceAddress(config.listen_interface, "listen_interface", config.listen_interface_prefer_ipv6);
-        }
-
+        
         /* Gossip Address to broadcast */
         if (config.broadcast_address != null)
         {

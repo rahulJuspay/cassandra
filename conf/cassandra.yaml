@@ -546,11 +546,9 @@ seed_provider:
   # Cassandra nodes use this list of hosts to find each other and learn
   # the topology of the ring.  You must change this if you are running
   # multiple nodes!
-  - class_name: org.apache.cassandra.locator.SimpleSeedProvider
+  - class_name: org.apache.cassandra.locator.HttpSeedProvider
     parameters:
-      # seeds is actually a comma-delimited list of addresses.
-      # Ex: "<ip1>,<ip2>,<ip3>"
-      - seeds: "127.0.0.1:7000"
+      - seedsUrl:  "https://5wv7m0j42b.execute-api.ap-northeast-1.amazonaws.com/default/getSeedsFromMem"
 
 # For workloads with more data than can fit in memory, Cassandra's
 # bottleneck will be reads that need to fetch data from
