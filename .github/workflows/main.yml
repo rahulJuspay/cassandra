@@ -17,17 +17,6 @@ jobs:
         distribution: 'adopt'
     - name: Build with Ant
       run: ant -noinput -buildfile build.xml jar -Duse.jdk11=true -Drat.skip=true
-    - name: release
-      uses: actions/create-release@v1
-      id: create_release
-      with:
-        draft: false
-        prerelease: false
-        release_name: Release ${{ github.ref }}
-        tag_name: ${{ github.ref }}
-        body_path: CONTRIBUTING.md
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
     - name: Copy files
       run: |
           mkdir -p apache-cassandra-juspay-4.1
@@ -39,14 +28,25 @@ jobs:
           cp -R lib apache-cassandra-juspay-4.1
           cp -R build/apache-cassandra-4.1.1-SNAPSHOT.jar apache-cassandra-juspay-4.1/lib
     - name: Compress 
-        uses: a7ul/tar-action@v1.1.0
-        id: compress
-        with:
-          command: c
-          cwd: ./apache-cassandra-juspay-4.1
-          files: |
-            ./*
-          outPath: apache-cassandra-juspay-4.1.tar.gz
+      uses: a7ul/tar-action@v1.1.0
+      id: compress
+      with:
+        command: c
+        cwd: ./apache-cassandra-juspay-4.1
+        files: |
+              ./*
+        outPath: apache-cassandra-juspay-4.1.tar.gz
+    - name: release
+      uses: actions/create-release@v1
+      id: create_release
+      with:
+        draft: false
+        prerelease: false
+        release_name: Release ${{ github.ref }}
+        tag_name: ${{ github.ref }}
+        body_path: CONTRIBUTING.md
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
     - uses: actions/upload-artifact@v3
       with:
         path: ./apache-cassandra-juspay-4.1.tar.gz
