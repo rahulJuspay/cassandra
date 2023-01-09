@@ -23,20 +23,20 @@ jobs:
       run: ant -noinput -buildfile build.xml jar -Duse.jdk11=true -Drat.skip=true
     - name: Copy files
       run: |
-          mkdir -p apache-cassandra-juspay
-          cp -R bin apache-cassandra-juspay
-          cp -R build/tools apache-cassandra-juspay
-          cp -R pylib apache-cassandra-juspay
-          cp -R conf apache-cassandra-juspay
-          cp -R doc apache-cassandra-juspay
-          cp -R lib apache-cassandra-juspay
-          cp -R build/apache-cassandra-4.1.1-SNAPSHOT.jar apache-cassandra-juspay/lib
+          mkdir -p apache-cassandra
+          cp -R bin apache-cassandra
+          cp -R build/tools apache-cassandra
+          cp -R pylib apache-cassandra
+          cp -R conf apache-cassandra
+          cp -R doc apache-cassandra
+          cp -R lib apache-cassandra
+          cp -R build/apache-cassandra-4.1.1-SNAPSHOT.jar apache-cassandra/lib
     - name: Compress 
       uses: a7ul/tar-action@v1.1.0
       id: compress
       with:
         command: c
-        cwd: apache-cassandra-juspay
+        cwd: apache-cassandra
         files: ./
         outPath: apache-cassandra-release-${{steps.short-sha.outputs.sha}}.tar.gz
     - name: release
@@ -45,8 +45,8 @@ jobs:
       with:
         draft: false
         prerelease: false
-        release_name: Release Juspay-cassandra-${{ steps.short-sha.outputs.sha }}
-        tag_name: Juspay-cassandra-${{ steps.short-sha.outputs.sha }}
+        release_name: Release apache-cassandra-${{ steps.short-sha.outputs.sha }}
+        tag_name: apache-cassandra-${{ steps.short-sha.outputs.sha }}
         body_path: CONTRIBUTING.md
       env:
         GITHUB_TOKEN: ${{ github.token }}
