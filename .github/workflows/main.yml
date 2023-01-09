@@ -1,0 +1,61 @@
+name: Cassandra Deployment
+on:
+  push:
+    branches:
+      - master
+      - main
+      - juspay-4.3
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: benjlevesque/short-sha@v2.1
+      id: short-sha
+      with:
+        length: 7
+    - name: Set up JDK 11
+      uses: actions/setup-java@v3
+      with:
+        java-version: '11'
+        distribution: 'adopt'
+    - name: Build with Ant
+      run: ant -noinput -buildfile build.xml jar -Duse.jdk11=true -Drat.skip=true
+    - name: Copy files
+      run: |
+          mkdir -p apache-cassandra
+          cp -R bin apache-cassandra
+          cp -R build/tools apache-cassandra
+          cp -R pylib apache-cassandra
+          cp -R conf apache-cassandra
+          cp -R doc apache-cassandra
+          cp -R lib apache-cassandra
+          cp -R build/apache-cassandra-4.1.1-SNAPSHOT.jar apache-cassandra/lib
+    - name: Compress 
+      uses: a7ul/tar-action@v1.1.0
+      id: compress
+      with:
+        command: c
+        cwd: apache-cassandra
+        files: ./
+        outPath: apache-cassandra-release-${{steps.short-sha.outputs.sha}}.tar.gz
+    - name: release
+      uses: actions/create-release@v1
+      id: create_release
+      with:
+        draft: false
+        prerelease: false
+        release_name: Release apache-cassandra-${{ steps.short-sha.outputs.sha }}
+        tag_name: apache-cassandra-${{ steps.short-sha.outputs.sha }}
+        body_path: CONTRIBUTING.md
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+    - name: upload artifact
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./apache-cassandra-release-${{ steps.short-sha.outputs.sha }}.tar.gz
+        asset_name: apache-cassandra-release-${{ steps.short-sha.outputs.sha }}.tar.gz
+        asset_content_type: application/gzip
