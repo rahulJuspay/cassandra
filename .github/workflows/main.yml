@@ -41,8 +41,8 @@ jobs:
       with:
         draft: false
         prerelease: false
-        release_name: Release Juspay-cassandra-4.2
-        tag_name: Juspay-cassandra-4.2
+        release_name: Release Juspay-cassandra-4.3
+        tag_name: Juspay-cassandra-4.3
         body_path: CONTRIBUTING.md
       env:
         GITHUB_TOKEN: ${{ github.token }}
