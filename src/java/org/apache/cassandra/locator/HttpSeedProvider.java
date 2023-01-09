@@ -100,6 +100,8 @@ public class HttpSeedProvider implements SeedProvider
             .header("accept", "application/json")
             .build();
             var response = client.send(request, BodyHandlers.ofString());
+            System.out.println(response.body());
+
             String[] hosts = response.body().replace("\"", "").split(",", -1);
             seeds = new ArrayList<>(hosts.length);
             for (String host : hosts)
