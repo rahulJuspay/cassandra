@@ -169,7 +169,7 @@ public class CommitLogDescriptor
 
         if (crc == (int) checkcrc.getValue())
         {
-            Map<?, ?> map = (Map<?, ?>) JSONValue.parse(new String(parametersBytes, StandardCharsets.UTF_8));
+            Map<?, ?> map = (Map<?, String>) JSONValue.parse(new String(parametersBytes, StandardCharsets.UTF_8));
             return new CommitLogDescriptor(version, id, parseCompression(map), EncryptionContext.createFromMap(map, encryptionContext));
         }
         return null;
@@ -185,7 +185,7 @@ public class CommitLogDescriptor
         if (className == null)
             return null;
 
-        Map<String, Object> cparams = (Map<String, Object>) params.get(COMPRESSION_PARAMETERS_KEY);
+        Map<String, String> cparams = (Map<String, String>) params.get(COMPRESSION_PARAMETERS_KEY);
         return new ParameterizedClass(className, cparams);
     }
 

@@ -126,7 +126,7 @@ final class HintsDescriptor
         {
             Map<String, Object> compressorConfig = (Map<String, Object>) params.get(COMPRESSION);
             return new ParameterizedClass((String) compressorConfig.get(ParameterizedClass.CLASS_NAME),
-                                          (Map<String, Object>) compressorConfig.get(ParameterizedClass.PARAMETERS));
+                                          (Map<String, String>) compressorConfig.get(ParameterizedClass.PARAMETERS));
         }
         else
         {

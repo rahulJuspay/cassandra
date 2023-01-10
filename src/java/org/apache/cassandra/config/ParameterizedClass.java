@@ -33,14 +33,14 @@ public class ParameterizedClass
     public static final String PARAMETERS = "parameters";
 
     public String class_name;
-    public Map<String, Object> parameters;
+    public Map<String, String> parameters;
 
     public ParameterizedClass()
     {
         // for snakeyaml
     }
 
-    public ParameterizedClass(String class_name, Map<String, Object> parameters)
+    public ParameterizedClass(String class_name, Map<String, String> parameters)
     {
         this.class_name = class_name;
         this.parameters = parameters;
@@ -50,7 +50,7 @@ public class ParameterizedClass
     public ParameterizedClass(Map<String, ?> p)
     {
         this((String)p.get(CLASS_NAME),
-             p.containsKey(PARAMETERS) ? (Map<String, Object>)((List<?>)p.get(PARAMETERS)).get(0) : null);
+             p.containsKey(PARAMETERS) ? (Map<String, String>)((List<?>)p.get(PARAMETERS)).get(0) : null);
     }
 
     @Override
