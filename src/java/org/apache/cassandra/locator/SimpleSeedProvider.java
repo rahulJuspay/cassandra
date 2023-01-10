@@ -46,7 +46,7 @@ public class SimpleSeedProvider implements SeedProvider
         {
             throw new AssertionError(e);
         }
-        String[] hosts = conf.seed_provider.parameters.get("seeds").split(",", -1);
+        String[] hosts = conf.seed_provider.parameters.get("seeds").toString().split(",", -1);
         List<InetAddressAndPort> seeds = new ArrayList<>(hosts.length);
         for (String host : hosts)
         {
