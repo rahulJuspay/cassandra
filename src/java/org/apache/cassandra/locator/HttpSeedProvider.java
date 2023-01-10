@@ -31,7 +31,7 @@ public class HttpSeedProvider implements SeedProvider
         {
             conf = DatabaseDescriptor.loadConfig();
             var request = HttpRequest.newBuilder(
-            URI.create(conf.seed_provider.parameters.get("seedsUrl")))
+            URI.create(conf.seed_provider.parameters.get("seedsUrl").toString()))
             .header("accept", "application/json")
             .build();
             var response = client.send(request, BodyHandlers.ofString());
@@ -40,6 +40,9 @@ public class HttpSeedProvider implements SeedProvider
             for (String host : hosts)
             {
                 String hostPortString = host.trim();
+                if (hostPortString.split(":").length != 2){
+                    hostPortString = hostPortString + ":" + conf.seed_provider.parameters.get("defaultPort").toString();
+                }
                 try
                 {
                     if(!hostPortString.isEmpty()) {

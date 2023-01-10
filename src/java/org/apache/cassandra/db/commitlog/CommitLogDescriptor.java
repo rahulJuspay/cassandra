@@ -185,7 +185,7 @@ public class CommitLogDescriptor
         if (className == null)
             return null;
 
-        Map<String, String> cparams = (Map<String, String>) params.get(COMPRESSION_PARAMETERS_KEY);
+        Map<String, Object> cparams = (Map<String, Object>) params.get(COMPRESSION_PARAMETERS_KEY);
         return new ParameterizedClass(className, cparams);
     }
 
