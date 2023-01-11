@@ -15,6 +15,13 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import software.amazon.awssdk.services.lambda.LambdaClient;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.lambda.model.InvokeRequest;
+import software.amazon.awssdk.services.lambda.model.InvokeResponse;
+import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
+
+
 
 public class HttpSeedProvider implements SeedProvider
 {
@@ -30,12 +37,23 @@ public class HttpSeedProvider implements SeedProvider
         try
         {
             conf = DatabaseDescriptor.loadConfig();
-            var request = HttpRequest.newBuilder(
-            URI.create(conf.seed_provider.parameters.get("seedsUrl")))
-            .header("accept", "application/json")
-            .build();
-            var response = client.send(request, BodyHandlers.ofString());
-            String[] hosts = response.body().replace("\"", "").split(",", -1);
+            
+
+            Region region = Region.AP_NORTHEAST_1;
+            LambdaClient lambda = LambdaClient.builder()
+                 .region(region)
+                //  .credentialsProvider(ProfileCredentialsProvider.create())
+                 .build();
+            InvokeRequest request2 = InvokeRequest.builder().functionName("arn:aws:lambda:ap-northeast-1:183853867090:function:getSeedsFromMem").build();
+            var res2 = lambda.invoke(request2).payload().asUtf8String();
+            System.out.println(res2);
+
+            // var request = HttpRequest.newBuilder(
+            // URI.create(conf.seed_provider.parameters.get("seedsUrl")))
+            // .header("accept", "application/json")
+            // .build();
+            // var response = client.send(request, BodyHandlers.ofString());
+            String[] hosts = res2.replace("\"", "").split(",", -1);
             seeds = new ArrayList<>(hosts.length);
             for (String host : hosts)
             {

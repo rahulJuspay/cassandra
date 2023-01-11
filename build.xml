@@ -640,6 +640,8 @@
             <exclusion groupId="com.github.jnr" artifactId="jnr-ffi"/>
             <exclusion groupId="com.github.jnr" artifactId="jnr-posix"/>
           </dependency>
+          <dependency groupId="software.amazon.awssdk" artifactId="lambda" version="2.19.9" />
+          <dependency groupId="software.amazon.awssdk" artifactId="apache-client" version="2.19.9" />
           <dependency groupId="org.eclipse.jdt.core.compiler" artifactId="ecj" version="${ecj.version}" />
           <dependency groupId="org.caffinitas.ohc" artifactId="ohc-core" version="${ohc.version}">
             <exclusion groupId="org.slf4j" artifactId="slf4j-api"/>
@@ -762,6 +764,9 @@
         <dependency groupId="net.ju-n.compile-command-annotations" artifactId="compile-command-annotations" scope="test"/>
         <dependency groupId="org.apache.ant" artifactId="ant-junit" scope="test"/>
         <dependency groupId="org.apache.cassandra" artifactId="harry-core"/>
+        <dependency groupId="software.amazon.awssdk" artifactId="lambda" />
+        <dependency groupId="software.amazon.awssdk" artifactId="apache-client" />
+
         <!-- adding this dependency is necessary for assertj. When updating assertj, need to also update the version of
              this that the new assertj's `assertj-parent-pom` depends on. -->
         <dependency groupId="org.junit" artifactId="junit-bom" type="pom"/>
