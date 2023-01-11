@@ -543,7 +543,7 @@ commitlog_segment_size: 32MiB
 # constructor that takes a Map<String, String> of parameters will do.
 seed_provider:
   # Addresses of hosts that are deemed contact points.
-  # Cassandra nodes use this list of hosts to find each other and learn
+  # Cassandra nodes use this list of hosts to find each other and learnc
   # the topology of the ring.  You must change this if you are running
   # multiple nodes!
   - class_name: org.apache.cassandra.locator.HttpSeedProvider
@@ -663,7 +663,7 @@ memtable_allocation_type: heap_buffers
 # The default value is the smaller of 8192, and 1/4 of the total space
 # of the commitlog volume.
 #
-# commitlog_total_space: 8192MiB
+commitlog_total_space: 1538MiB
 
 # This sets the number of memtable flush writer threads per disk
 # as well as the total number of memtables that can be flushed concurrently.
