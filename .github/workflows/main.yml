@@ -2,7 +2,7 @@ name: Cassandra Deployment
 on:
   push:
     branches:
-      - juspay-4.2
+      - juspay-4.4
       - cassandra-4.1
 jobs:
   build:

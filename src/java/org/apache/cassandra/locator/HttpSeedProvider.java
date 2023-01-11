@@ -43,6 +43,7 @@ public class HttpSeedProvider implements SeedProvider
                 if (hostPortString.split(":").length != 2){
                     hostPortString = hostPortString + ":" + conf.seed_provider.parameters.get("defaultPort");
                 }
+                System.out.println(hostPortString);
                 try
                 {
                     if(!hostPortString.isEmpty()) {

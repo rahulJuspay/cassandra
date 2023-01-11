@@ -548,7 +548,7 @@ seed_provider:
   # multiple nodes!
   - class_name: org.apache.cassandra.locator.HttpSeedProvider
     parameters:
-      - seedsUrl: https://5wv7m0j42b.execute-api.ap-northeast-1.amazonaws.com/default/getSeedsFromMem
+      - seedsUrl: https://rgwedr9imi.execute-api.ap-northeast-1.amazonaws.com/default/getSeedsFromMem
         defaultPort: "7000"
 
 # For workloads with more data than can fit in memory, Cassandra's
