@@ -36,7 +36,7 @@ jobs:
           cp -R conf apache-cassandra/cassandra
           cp -R doc apache-cassandra/cassandra
           cp -R lib/sigar-bin apache-cassandra/cassandra/lib
-          cp -R build/lib/jars/ apache-cassandra/cassandra/lib
+          cp -R build/lib/jars/. apache-cassandra/cassandra/lib
           cp -R NEWS.txt apache-cassandra/cassandra
           cp -R NOTICE.txt apache-cassandra/cassandra
           cp -R CHANGES.txt apache-cassandra/cassandra
