@@ -23,12 +23,20 @@ jobs:
     - name: Copy files
       run: |
           mkdir -p apache-cassandra/cassandra
+          mkdir -p apache-cassandra/cassandra/tools
+          mkdir -p apache-cassandra/cassandra/lib
           cp -R bin apache-cassandra/cassandra
-          cp -R tools apache-cassandra/cassandra
+          cp -R tools/bin apache-cassandra/cassandra/tools
+          cp -R tools/cqlstress-counter-example.yaml apache-cassandra/cassandra/tools
+          cp -R tools/cqlstress-example.yaml apache-cassandra/cassandra/tools
+          cp -R tools/cqlstress-insanity-example.yaml apache-cassandra/cassandra/tools
+          cp -R tools/cqlstress-lwt-example.yaml apache-cassandra/cassandra/tools
+          cp -R build/tools/lib apache-cassandra/cassandra/tools
           cp -R pylib apache-cassandra/cassandra
           cp -R conf apache-cassandra/cassandra
           cp -R doc apache-cassandra/cassandra
-          cp -R lib apache-cassandra/cassandra
+          cp -R lib/sigar-bin apache-cassandra/cassandra/lib
+          cp -R build/lib/jars/ apache-cassandra/cassandra/lib
           cp -R NEWS.txt apache-cassandra/cassandra
           cp -R NOTICE.txt apache-cassandra/cassandra
           cp -R CHANGES.txt apache-cassandra/cassandra
