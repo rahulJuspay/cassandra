@@ -267,6 +267,8 @@ public class Config
     public int native_transport_max_threads = 128;
     @Replaces(oldName = "native_transport_max_frame_size_in_mb", converter = Converters.MEBIBYTES_DATA_STORAGE_INT, deprecated = true)
     public DataStorageSpec.IntMebibytesBound native_transport_max_frame_size = new DataStorageSpec.IntMebibytesBound("16MiB");
+    /** do bcrypt hashing in a limited pool to prevent cpu load spikes; note: any value < 1 will be set to 1 on init **/
+    public int native_transport_max_auth_threads = 4;
     public volatile long native_transport_max_concurrent_connections = -1L;
     public volatile long native_transport_max_concurrent_connections_per_ip = -1L;
     public boolean native_transport_flush_in_batches_legacy = false;
@@ -325,8 +327,14 @@ public class Config
     public DataStorageSpec.IntMebibytesBound min_free_space_per_drive = new DataStorageSpec.IntMebibytesBound("50MiB");
     public volatile Integer compaction_tombstone_warning_threshold = 100000;
 
+    // fraction of free disk space available for compaction after min free space is subtracted
+    public volatile Double max_space_usable_for_compactions_in_percentage = .95;
+
     public volatile int concurrent_materialized_view_builders = 1;
     public volatile int reject_repair_compaction_threshold = Integer.MAX_VALUE;
+
+    // The number of executors to use for building secondary indexes
+    public int concurrent_index_builders = 2;
 
     /**
      * @deprecated retry support removed on CASSANDRA-10992
@@ -383,6 +391,9 @@ public class Config
     // When true, new CDC mutations are rejected/blocked when reaching max CDC storage.
     // When false, new CDC mutations can always be added. But it will remove the oldest CDC commit log segment on full.
     public volatile boolean cdc_block_writes = true;
+    // When true, CDC data in SSTable go through commit logs during internodes streaming, e.g. repair
+    // When false, it behaves the same as normal streaming.
+    public volatile boolean cdc_on_repair_enabled = true;
     public String cdc_raw_directory;
     @Replaces(oldName = "cdc_total_space_in_mb", converter = Converters.MEBIBYTES_DATA_STORAGE_INT, deprecated = true)
     public DataStorageSpec.IntMebibytesBound cdc_total_space = new DataStorageSpec.IntMebibytesBound("0MiB");
@@ -420,6 +431,7 @@ public class Config
 
     public ParameterizedClass hints_compression;
     public volatile boolean auto_hints_cleanup_enabled = false;
+    public volatile boolean transfer_hints_on_decommission = true;
 
     public volatile boolean incremental_backups = false;
     public boolean trickle_fsync = false;
@@ -653,6 +665,8 @@ public class Config
     public volatile int max_concurrent_automatic_sstable_upgrades = 1;
     public boolean stream_entire_sstables = true;
 
+    public volatile boolean skip_stream_disk_space_check = false;
+
     public volatile AuditLogOptions audit_logging_options = new AuditLogOptions();
     public volatile FullQueryLoggerOptions full_query_logging_options = new FullQueryLoggerOptions();
 
@@ -830,13 +844,18 @@ public class Config
     public volatile Set<ConsistencyLevel> write_consistency_levels_warned = Collections.emptySet();
     public volatile Set<ConsistencyLevel> write_consistency_levels_disallowed = Collections.emptySet();
     public volatile boolean user_timestamps_enabled = true;
+    public volatile boolean alter_table_enabled = true;
     public volatile boolean group_by_enabled = true;
     public volatile boolean drop_truncate_table_enabled = true;
+    public volatile boolean drop_keyspace_enabled = true;
     public volatile boolean secondary_indexes_enabled = true;
     public volatile boolean uncompressed_tables_enabled = true;
     public volatile boolean compact_tables_enabled = true;
     public volatile boolean read_before_write_list_operations_enabled = true;
     public volatile boolean allow_filtering_enabled = true;
+    public volatile boolean simplestrategy_enabled = true;
+    public volatile DataStorageSpec.LongBytesBound column_value_size_warn_threshold = null;
+    public volatile DataStorageSpec.LongBytesBound column_value_size_fail_threshold = null;
     public volatile DataStorageSpec.LongBytesBound collection_size_warn_threshold = null;
     public volatile DataStorageSpec.LongBytesBound collection_size_fail_threshold = null;
     public volatile int items_per_collection_warn_threshold = -1;
@@ -848,9 +867,16 @@ public class Config
     public volatile DataStorageSpec.LongBytesBound data_disk_usage_max_disk_size = null;
     public volatile int minimum_replication_factor_warn_threshold = -1;
     public volatile int minimum_replication_factor_fail_threshold = -1;
+    public volatile int maximum_replication_factor_warn_threshold = -1;
+    public volatile int maximum_replication_factor_fail_threshold = -1;
+    public volatile boolean zero_ttl_on_twcs_warned = true;
+    public volatile boolean zero_ttl_on_twcs_enabled = true;
 
     public volatile DurationSpec.LongNanosecondsBound streaming_state_expires = new DurationSpec.LongNanosecondsBound("3d");
     public volatile DataStorageSpec.LongBytesBound streaming_state_size = new DataStorageSpec.LongBytesBound("40MiB");
+
+    public volatile boolean streaming_stats_enabled = true;
+    public volatile DurationSpec.IntSecondsBound streaming_slow_events_log_timeout = new DurationSpec.IntSecondsBound("10s");
 
     /** The configuration of startup checks. */
     public volatile Map<StartupCheckType, Map<String, Object>> startup_checks = new HashMap<>();
@@ -1036,6 +1062,10 @@ public class Config
      */
     public volatile int paxos_repair_parallelism = -1;
 
+    public volatile boolean sstable_read_rate_persistence_enabled = false;
+
+    public volatile boolean client_request_size_metrics_enabled = true;
+
     public volatile int max_top_size_partition_count = 10;
     public volatile int max_top_tombstone_partition_count = 10;
     public volatile DataStorageSpec.LongBytesBound min_tracked_partition_size = new DataStorageSpec.LongBytesBound("1MiB");
@@ -1167,4 +1197,7 @@ public class Config
 
         logger.info("Node configuration:[{}]", Joiner.on("; ").join(configMap.entrySet()));
     }
+
+    public volatile boolean dump_heap_on_uncaught_exception = false;
+    public String heap_dump_path = "heapdump";
 }

@@ -18,7 +18,8 @@
 #
 
 BASEDIR=`dirname $0`
-BASE_BRANCH=cassandra-4.1
+BASE_BRANCH=trunk
+set -e
 
 die ()
 {
@@ -207,7 +208,8 @@ if (! ($all)); then
            | sed -e "s/\\.java//" \
            | sed -e "s,^${2},," \
            | tr  '/' '.' \
-           | grep ${3} )
+           | grep ${3} )\
+           || : # avoid execution interruptions due to grep return codes and set -e
     for test in $tests; do
       echo "  $test"
       has_env_vars=true
@@ -272,6 +274,8 @@ delete_repeated_jobs()
     delete_job "$1" "j11_utests_cdc_repeat"
     delete_job "$1" "j8_utests_compression_repeat"
     delete_job "$1" "j11_utests_compression_repeat"
+    delete_job "$1" "j8_utests_trie_repeat"
+    delete_job "$1" "j11_utests_trie_repeat"
     delete_job "$1" "j8_utests_system_keyspace_directory_repeat"
     delete_job "$1" "j11_utests_system_keyspace_directory_repeat"
   fi

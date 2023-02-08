@@ -88,6 +88,8 @@ import org.apache.cassandra.utils.Mx4jTool;
 import org.apache.cassandra.utils.NativeLibrary;
 import org.apache.cassandra.utils.concurrent.Future;
 import org.apache.cassandra.utils.concurrent.FutureCombiner;
+import org.apache.cassandra.utils.logging.LoggingSupportFactory;
+import org.apache.cassandra.utils.logging.VirtualTableAppender;
 
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.apache.cassandra.config.CassandraRelevantProperties.CASSANDRA_FOREGROUND;
@@ -248,7 +250,7 @@ public class CassandraDaemon
 
         ThreadAwareSecurityManager.install();
 
-        logSystemInfo();
+        logSystemInfo(logger);
 
         NativeLibrary.tryMlockall();
 
@@ -291,24 +293,13 @@ public class CassandraDaemon
 
         SSTableHeaderFix.fixNonFrozenUDTIfUpgradeFrom30();
 
-        // clean up debris in the rest of the keyspaces
-        for (String keyspaceName : Schema.instance.getKeyspaces())
+        try
         {
-            // Skip system as we've already cleaned it
-            if (keyspaceName.equals(SchemaConstants.SYSTEM_KEYSPACE_NAME))
-                continue;
-
-            for (TableMetadata cfm : Schema.instance.getTablesAndViews(keyspaceName))
-            {
-                try
-                {
-                    ColumnFamilyStore.scrubDataDirectories(cfm);
-                }
-                catch (StartupException e)
-                {
-                    exitOrFail(e.returnCode, e.getMessage(), e.getCause());
-                }
-            }
+            scrubDataDirectories();
+        }
+        catch (StartupException e)
+        {
+            exitOrFail(e.returnCode, e.getMessage(), e.getCause());
         }
 
         Keyspace.setInitialized();
@@ -579,6 +570,28 @@ public class CassandraDaemon
     {
         VirtualKeyspaceRegistry.instance.register(VirtualSchemaKeyspace.instance);
         VirtualKeyspaceRegistry.instance.register(SystemViewsKeyspace.instance);
+
+        // flush log messages to system_views.system_logs virtual table as there were messages already logged
+        // before that virtual table was instantiated
+        LoggingSupportFactory.getLoggingSupport()
+                             .getAppender(VirtualTableAppender.class, VirtualTableAppender.APPENDER_NAME)
+                             .ifPresent(appender -> ((VirtualTableAppender) appender).flushBuffer());
+    }
+
+    public void scrubDataDirectories() throws StartupException
+    {
+        // clean up debris in the rest of the keyspaces
+        for (String keyspaceName : Schema.instance.getKeyspaces())
+        {
+            // Skip system as we've already cleaned it
+            if (keyspaceName.equals(SchemaConstants.SYSTEM_KEYSPACE_NAME))
+                continue;
+
+            for (TableMetadata cfm : Schema.instance.getTablesAndViews(keyspaceName))
+            {
+                ColumnFamilyStore.scrubDataDirectories(cfm);
+            }
+        }
     }
 
     public synchronized void initializeClientTransports()
@@ -615,7 +628,7 @@ public class CassandraDaemon
         return setupCompleted;
     }
 
-    private void logSystemInfo()
+    public static void logSystemInfo(Logger logger)
     {
     	if (logger.isInfoEnabled())
     	{

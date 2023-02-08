@@ -55,7 +55,7 @@ public class SSTableMetadataViewerTest extends OfflineToolUtils
             assertThat(tool.getCleanedStderr(), CoreMatchers.containsStringIgnoringCase("Options:"));
             assertEquals(1, tool.getExitCode());
         }
-        assertNoUnexpectedThreadsStarted(null);
+        assertNoUnexpectedThreadsStarted(null, false);
         assertSchemaNotLoaded();
         assertCLSMNotLoaded();
         assertSystemKSNotLoaded();
@@ -108,7 +108,7 @@ public class SSTableMetadataViewerTest extends OfflineToolUtils
         assertTrue(tool.getStdout(), CharMatcher.ascii().matchesAllOf(tool.getStdout()));
         Assertions.assertThat(tool.getStdout()).doesNotContain("Widest Partitions");
         Assertions.assertThat(tool.getStdout()).contains(sstable.replaceAll("-Data\\.db$", ""));
-        assertTrue(tool.getStderr(), tool.getStderr().isEmpty());
+        assertTrue(tool.getCleanedStderr(), tool.getCleanedStderr().isEmpty());
         assertEquals(0, tool.getExitCode());
         assertGoodEnvPostTest();
     }
@@ -123,7 +123,7 @@ public class SSTableMetadataViewerTest extends OfflineToolUtils
                   ToolResult tool = ToolRunner.invokeClass(SSTableMetadataViewer.class, arg, sstable);
                   Assertions.assertThat(tool.getStdout()).contains(Util.BLUE);
                   Assertions.assertThat(tool.getStdout()).contains(sstable.replaceAll("-Data\\.db$", ""));
-                  assertTrue("Arg: [" + arg + "]\n" + tool.getStderr(), tool.getStderr().isEmpty());
+                  assertTrue("Arg: [" + arg + "]\n" + tool.getCleanedStderr(), tool.getCleanedStderr().isEmpty());
                   assertEquals(0, tool.getExitCode());
                   assertGoodEnvPostTest();
               });
@@ -139,7 +139,7 @@ public class SSTableMetadataViewerTest extends OfflineToolUtils
                   ToolResult tool = ToolRunner.invokeClass(SSTableMetadataViewer.class, arg, sstable);
                   assertTrue(tool.getStdout(), !CharMatcher.ascii().matchesAllOf(tool.getStdout()));
                   Assertions.assertThat(tool.getStdout()).contains(sstable.replaceAll("-Data\\.db$", ""));
-                  assertTrue("Arg: [" + arg + "]\n" + tool.getStderr(), tool.getStderr().isEmpty());
+                  assertTrue("Arg: [" + arg + "]\n" + tool.getCleanedStderr(), tool.getCleanedStderr().isEmpty());
                   assertEquals(0, tool.getExitCode());
                   assertGoodEnvPostTest();
               });
@@ -211,14 +211,14 @@ public class SSTableMetadataViewerTest extends OfflineToolUtils
                   ToolResult tool = ToolRunner.invokeClass(SSTableMetadataViewer.class, arg, sstable);
                   Assertions.assertThat(tool.getStdout()).contains("Widest Partitions");
                   Assertions.assertThat(tool.getStdout()).contains(sstable.replaceAll("-Data\\.db$", ""));
-                  assertTrue("Arg: [" + arg + "]\n" + tool.getStderr(), tool.getStderr().isEmpty());
+                  assertTrue("Arg: [" + arg + "]\n" + tool.getCleanedStderr(), tool.getCleanedStderr().isEmpty());
                   assertEquals(0, tool.getExitCode());
               });
     }
 
     private void assertGoodEnvPostTest()
     {
-        assertNoUnexpectedThreadsStarted(OPTIONAL_THREADS_WITH_SCHEMA);
+        assertNoUnexpectedThreadsStarted(OPTIONAL_THREADS_WITH_SCHEMA, false);
         assertSchemaNotLoaded();
         assertCLSMNotLoaded();
         assertSystemKSNotLoaded();

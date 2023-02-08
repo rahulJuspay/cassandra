@@ -20,6 +20,7 @@ package org.apache.cassandra.cql3.statements;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.concurrent.TimeUnit;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
@@ -52,17 +53,15 @@ import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.aggregation.AggregationSpecification;
 import org.apache.cassandra.db.aggregation.GroupMaker;
 import org.apache.cassandra.db.filter.*;
-import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.marshal.CompositeType;
 import org.apache.cassandra.db.marshal.Int32Type;
-import org.apache.cassandra.db.marshal.UserType;
 import org.apache.cassandra.db.partitions.PartitionIterator;
-import org.apache.cassandra.db.rows.ComplexColumnData;
 import org.apache.cassandra.db.rows.Row;
 import org.apache.cassandra.db.rows.RowIterator;
 import org.apache.cassandra.db.view.View;
 import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.exceptions.*;
+import org.apache.cassandra.metrics.ClientRequestSizeMetrics;
 import org.apache.cassandra.index.IndexRegistry;
 import org.apache.cassandra.serializers.MarshalException;
 import org.apache.cassandra.service.ClientState;
@@ -76,6 +75,7 @@ import org.apache.cassandra.transport.ProtocolVersion;
 import org.apache.cassandra.transport.messages.ResultMessage;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
+import org.apache.cassandra.utils.NoSpamLogger;
 
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
@@ -100,6 +100,7 @@ import static org.apache.cassandra.utils.Clock.Global.nanoTime;
 public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
 {
     private static final Logger logger = LoggerFactory.getLogger(SelectStatement.class);
+    private static final NoSpamLogger noSpamLogger = NoSpamLogger.getLogger(SelectStatement.logger, 1, TimeUnit.MINUTES);
 
     public static final int DEFAULT_PAGE_SIZE = 10000;
 
@@ -263,21 +264,30 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
 
         if (options.isReadThresholdsEnabled())
             query.trackWarnings();
+        ResultMessage.Rows rows;
 
         if (aggregationSpec == null && (pageSize <= 0 || (query.limits().count() <= pageSize)))
-            return execute(query, options, state.getClientState(), selectors, nowInSec, userLimit, null, queryStartNanoTime);
+        {
+            rows = execute(query, options, state.getClientState(), selectors, nowInSec, userLimit, null, queryStartNanoTime);
+        }
+        else
+        {
+            QueryPager pager = getPager(query, options);
 
-        QueryPager pager = getPager(query, options);
+            rows = execute(state,
+                           Pager.forDistributedQuery(pager, cl, state.getClientState()),
+                           options,
+                           selectors,
+                           pageSize,
+                           nowInSec,
+                           userLimit,
+                           aggregationSpec,
+                           queryStartNanoTime);
+        }
+        if (!SchemaConstants.isSystemKeyspace(table.keyspace))
+            ClientRequestSizeMetrics.recordReadResponseMetrics(rows, restrictions, selection);
 
-        return execute(state,
-                       Pager.forDistributedQuery(pager, cl, state.getClientState()),
-                       options,
-                       selectors,
-                       pageSize,
-                       nowInSec,
-                       userLimit,
-                       aggregationSpec,
-                       queryStartNanoTime);
+        return rows;
     }
 
 
@@ -423,10 +433,14 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
             if (!restrictions.hasPartitionKeyRestrictions())
             {
                 warn("Aggregation query used without partition key");
+                noSpamLogger.warn(String.format("Aggregation query used without partition key on table %s.%s, aggregation type: %s",
+                                                 keyspace(), table(), aggregationSpec.kind()));
             }
             else if (restrictions.keyIsInRelation())
             {
                 warn("Aggregation query used on multiple partition keys (IN restriction)");
+                noSpamLogger.warn(String.format("Aggregation query used on multiple partition keys (IN restriction) on table %s.%s, aggregation type: %s",
+                                                 keyspace(), table(), aggregationSpec.kind()));
             }
         }
 
@@ -980,7 +994,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
         {
             if (!staticRow.isEmpty() && restrictions.returnStaticContentOnPartitionWithNoRows())
             {
-                result.newRow(partition.partitionKey(), staticRow.clustering());
+                result.newRow(protocolVersion, partition.partitionKey(), staticRow.clustering(), selection.getColumns());
                 maybeFail(result, options);
                 for (ColumnMetadata def : selection.getColumns())
                 {
@@ -990,7 +1004,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
                             result.add(keyComponents[def.position()]);
                             break;
                         case STATIC:
-                            addValue(result, def, staticRow, nowInSec, protocolVersion);
+                            result.add(partition.staticRow().getColumnData(def), nowInSec);
                             break;
                         default:
                             result.add((ByteBuffer)null);
@@ -1003,7 +1017,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
         while (partition.hasNext())
         {
             Row row = partition.next();
-            result.newRow( partition.partitionKey(), row.clustering());
+            result.newRow(protocolVersion, partition.partitionKey(), row.clustering(), selection.getColumns());
 
             // reads aren't failed as soon the size exceeds the failure threshold, they're failed once the failure
             // threshold has been exceeded and we start adding more data. We're slightly more permissive to avoid
@@ -1023,32 +1037,13 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
                         result.add(row.clustering().bufferAt(def.position()));
                         break;
                     case REGULAR:
-                        addValue(result, def, row, nowInSec, protocolVersion);
+                        result.add(row.getColumnData(def), nowInSec);
                         break;
                     case STATIC:
-                        addValue(result, def, staticRow, nowInSec, protocolVersion);
+                        result.add(staticRow.getColumnData(def), nowInSec);
                         break;
                 }
             }
-        }
-    }
-
-    private static void addValue(ResultSetBuilder result, ColumnMetadata def, Row row, int nowInSec, ProtocolVersion protocolVersion)
-    {
-        if (def.isComplex())
-        {
-            assert def.type.isMultiCell();
-            ComplexColumnData complexData = row.getComplexColumnData(def);
-            if (complexData == null)
-                result.add(null);
-            else if (def.type.isCollection())
-                result.add(((CollectionType) def.type).serializeForNativeProtocol(complexData.iterator(), protocolVersion));
-            else
-                result.add(((UserType) def.type).serializeForNativeProtocol(complexData.iterator(), protocolVersion));
-        }
-        else
-        {
-            result.add(row.getCell(def), nowInSec);
         }
     }
 
@@ -1097,17 +1092,17 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
         {
             // Cache locally for use by Guardrails
             this.state = state;
-            return prepare(false);
+            return prepare(state, false);
         }
 
-        public SelectStatement prepare(boolean forView) throws InvalidRequestException
+        public SelectStatement prepare(ClientState state, boolean forView) throws InvalidRequestException
         {
             TableMetadata table = Schema.instance.validateTable(keyspace(), name());
 
             List<Selectable> selectables = RawSelector.toSelectables(selectClause, table);
             boolean containsOnlyStaticColumns = selectOnlyStaticColumns(table, selectables);
 
-            StatementRestrictions restrictions = prepareRestrictions(table, bindVariables, containsOnlyStaticColumns, forView);
+            StatementRestrictions restrictions = prepareRestrictions(state, table, bindVariables, containsOnlyStaticColumns, forView);
 
             // If we order post-query, the sorted column needs to be in the ResultSet for sorting,
             // even if we don't ultimately ship them to the client (CASSANDRA-4911).
@@ -1237,12 +1232,14 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
          * @return the restrictions
          * @throws InvalidRequestException if a problem occurs while building the restrictions
          */
-        private StatementRestrictions prepareRestrictions(TableMetadata metadata,
+        private StatementRestrictions prepareRestrictions(ClientState state,
+                                                          TableMetadata metadata,
                                                           VariableSpecifications boundNames,
                                                           boolean selectsOnlyStaticColumns,
                                                           boolean forView) throws InvalidRequestException
         {
-            return new StatementRestrictions(StatementType.SELECT,
+            return new StatementRestrictions(state,
+                                             StatementType.SELECT,
                                              metadata,
                                              whereClause,
                                              boundNames,
@@ -1316,6 +1313,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
             int clusteringPrefixSize = 0;
 
             Iterator<ColumnMetadata> pkColumns = metadata.primaryKeyColumns().iterator();
+            List<ColumnMetadata> columns = null;
             Selector.Factory selectorFactory = null;
             for (Selectable.Raw raw : parameters.groups)
             {
@@ -1327,7 +1325,7 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
                 {
                     WithFunction withFunction = (WithFunction) selectable;
                     validateGroupByFunction(withFunction);
-                    List<ColumnMetadata> columns = new ArrayList<ColumnMetadata>();
+                    columns = new ArrayList<ColumnMetadata>();
                     selectorFactory = selectable.newSelectorFactory(metadata, null, columns, boundNames);
                     checkFalse(columns.isEmpty(), "GROUP BY functions must have one clustering column name as parameter");
                     if (columns.size() > 1)
@@ -1375,7 +1373,8 @@ public class SelectStatement implements CQLStatement.SingleKeyspaceCqlStatement
             return selectorFactory == null ? AggregationSpecification.aggregatePkPrefixFactory(metadata.comparator, clusteringPrefixSize)
                                            : AggregationSpecification.aggregatePkPrefixFactoryWithSelector(metadata.comparator,
                                                                                                            clusteringPrefixSize,
-                                                                                                           selectorFactory);
+                                                                                                           selectorFactory,
+                                                                                                           columns);
         }
 
         /**

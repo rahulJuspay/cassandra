@@ -670,7 +670,8 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
                 if (iter == null)
                     continue;
 
-                minTimestamp = Math.min(minTimestamp, memtable.getMinTimestamp());
+                if (memtable.getMinTimestamp() != Memtable.NO_MIN_TIMESTAMP)
+                    minTimestamp = Math.min(minTimestamp, memtable.getMinTimestamp());
 
                 // Memtable data is always considered unrepaired
                 controller.updateMinOldestUnrepairedTombstone(memtable.getMinLocalDeletionTime());
@@ -819,6 +820,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
         {
             DecoratedKey key = merged.partitionKey();
             metrics.topReadPartitionFrequency.addSample(key.getKey(), 1);
+            metrics.topReadPartitionSSTableCount.addSample(key.getKey(), metricsCollector.getMergedSSTables());
         }
 
         class UpdateSstablesIterated extends Transformation<UnfilteredRowIterator>
@@ -962,6 +964,7 @@ public class SinglePartitionReadCommand extends ReadCommand implements SinglePar
 
         DecoratedKey key = result.partitionKey();
         cfs.metric.topReadPartitionFrequency.addSample(key.getKey(), 1);
+        cfs.metric.topReadPartitionSSTableCount.addSample(key.getKey(), metricsCollector.getMergedSSTables());
         StorageHook.instance.reportRead(cfs.metadata.id, partitionKey());
 
         return result.unfilteredIterator(columnFilter(), Slices.ALL, clusteringIndexFilter().isReversed());

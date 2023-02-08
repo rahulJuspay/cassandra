@@ -18,11 +18,15 @@
 package org.apache.cassandra.io.sstable;
 
 import java.util.*;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Objects;
 import com.google.common.base.Splitter;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.db.Directories;
 import org.apache.cassandra.io.sstable.format.SSTableFormat;
@@ -44,6 +48,24 @@ import static org.apache.cassandra.utils.TimeUUID.Generator.nextTimeUUID;
  */
 public class Descriptor
 {
+    private static final Logger logger = LoggerFactory.getLogger(Descriptor.class);
+
+    // Current SSTable directory format is {keyspace}/{tableName}-{tableId}[/backups|/snapshots/{tag}][/.{indexName}]/{component}.db
+    // * {var} are mandatory components
+    // * [var] are optional components
+    static final Pattern SSTABLE_DIR_PATTERN = Pattern.compile(".*/(?<keyspace>\\w+)/" +
+                                                               "(?<tableName>\\w+)-(?<tableId>[0-9a-f]{32})/" +
+                                                               "(backups/|snapshots/(?<tag>[\\w-]+)/)?" +
+                                                               "(\\.(?<indexName>[\\w-]+)/)?" +
+                                                               "(?<component>[\\w-]+)\\.(?<ext>[\\w]+)$");
+
+    // Pre 2.1 SSTable directory format is {keyspace}/{tableName}-{tableId}[/backups|/snapshots/{tag}][/.{indexName}]/{component}.db
+    static final Pattern LEGACY_SSTABLE_DIR_PATTERN = Pattern.compile(".*/(?<keyspace>\\w+)/" +
+                                                                      "(?<tableName>\\w+)/" +
+                                                                      "(backups/|snapshots/(?<tag>[\\w-]+)/)?" +
+                                                                      "(\\.(?<indexName>[\\w-]+)/)?" +
+                                                                      "(?<component>[\\w-]+)\\.(?<ext>[\\w]+)$");
+
     private final static String LEGACY_TMP_REGEX_STR = "^((.*)\\-(.*)\\-)?tmp(link)?\\-((?:l|k).)\\-(\\d)*\\-(.*)$";
     private final static Pattern LEGACY_TMP_REGEX = Pattern.compile(LEGACY_TMP_REGEX_STR);
 
@@ -191,7 +213,7 @@ public class Descriptor
      */
     public static Descriptor fromFilename(String filename)
     {
-        return fromFilename(new File(filename));
+        return fromFilenameWithComponent(new File(filename), false).left;
     }
 
     /**
@@ -218,6 +240,7 @@ public class Descriptor
 
     /**
      * Parse a sstable filename, extracting both the {@code Descriptor} and {@code Component} part.
+     * The keyspace/table name will be extracted from the directory path.
      *
      * @param file the {@code File} object for the filename to parse.
      * @return a pair of the descriptor and component corresponding to the provided {@code file}.
@@ -228,11 +251,75 @@ public class Descriptor
      */
     public static Pair<Descriptor, Component> fromFilenameWithComponent(File file)
     {
+        return fromFilenameWithComponent(file, true);
+    }
+
+    public static Pair<Descriptor, Component> fromFilenameWithComponent(File file, boolean validateDirs)
+    {
         // We need to extract the keyspace and table names from the parent directories, so make sure we deal with the
         // absolute path.
         if (!file.isAbsolute())
             file = file.toAbsolute();
 
+        SSTableInfo info = validateAndExtractInfo(file);
+        String name = file.name();
+
+        String keyspaceName = "";
+        String tableName = "";
+
+        Matcher sstableDirMatcher = SSTABLE_DIR_PATTERN.matcher(file.toString());
+
+        // Use pre-2.1 SSTable format if current one does not match it
+        if (!sstableDirMatcher.find(0))
+        {
+            sstableDirMatcher = LEGACY_SSTABLE_DIR_PATTERN.matcher(file.toString());
+        }
+
+        if (sstableDirMatcher.find(0))
+        {
+            keyspaceName = sstableDirMatcher.group("keyspace");
+            tableName = sstableDirMatcher.group("tableName");
+            String indexName = sstableDirMatcher.group("indexName");
+            if (indexName != null)
+            {
+                tableName = String.format("%s.%s", tableName, indexName);
+            }
+        }
+        else if (validateDirs)
+        {
+            logger.debug("Could not extract keyspace/table info from sstable directory {}", file.toString());
+            throw invalidSSTable(name, String.format("cannot extract keyspace and table name from %s; make sure the sstable is in the proper sub-directories", file));
+        }
+
+        return Pair.create(new Descriptor(info.version, parentOf(name, file), keyspaceName, tableName, info.id, info.format), info.component);
+    }
+
+    /**
+     * Parse a sstable filename, extracting both the {@code Descriptor} and {@code Component} part.
+     *
+     * @param file     the {@code File} object for the filename to parse.
+     * @param keyspace The keyspace name of the file. If <code>null</code>, then the keyspace name will be extracted
+     *                 from the directory path.
+     * @param table    The table name of the file. If <code>null</code>, then the table name will be extracted from the
+     *                 directory path.
+     * @return a pair of the descriptor and component corresponding to the provided {@code file}.
+     * @throws IllegalArgumentException if the provided {@code file} does point to a valid sstable filename. This could
+     *                                  mean either that the filename doesn't look like a sstable file, or that it is for an old and unsupported
+     *                                  versions.
+     */
+    public static Pair<Descriptor, Component> fromFilenameWithComponent(File file, String keyspace, String table)
+    {
+        if (null == keyspace || null == table)
+        {
+            return fromFilenameWithComponent(file);
+        }
+
+        SSTableInfo info = validateAndExtractInfo(file);
+        return Pair.create(new Descriptor(info.version, parentOf(file.name(), file), keyspace, table, info.id, info.format), info.component);
+    }
+
+    private static SSTableInfo validateAndExtractInfo(File file)
+    {
         String name = file.name();
         List<String> tokens = filenameSplitter.splitToList(name);
         int size = tokens.size();
@@ -245,9 +332,7 @@ public class Descriptor
             // Note that we assume it's an old format sstable if it has the right number of tokens: this is not perfect
             // but we're just trying to be helpful, not perfect.
             if (size == 5 || size == 6)
-                throw new IllegalArgumentException(String.format("%s is of version %s which is now unsupported and cannot be read.",
-                                                                 name,
-                                                                 tokens.get(size - 3)));
+                throw new IllegalArgumentException(String.format("%s is of version %s which is now unsupported and cannot be read.", name, tokens.get(size - 3)));
             throw new IllegalArgumentException(String.format("Invalid sstable file %s: the name doesn't look like a supported sstable file name", name));
         }
 
@@ -282,27 +367,23 @@ public class Descriptor
         if (!version.isCompatible())
             throw invalidSSTable(name, "incompatible sstable version (%s); you should have run upgradesstables before upgrading", versionString);
 
-        File directory = parentOf(name, file);
-        File tableDir = directory;
+        return new SSTableInfo(version, id, format, component);
+    }
 
-        // Check if it's a 2ndary index directory (not that it doesn't exclude it to be also a backup or snapshot)
-        String indexName = "";
-        if (Directories.isSecondaryIndexFolder(tableDir))
+    private static class SSTableInfo
+    {
+        final Version version;
+        final SSTableId id;
+        final SSTableFormat.Type format;
+        final Component component;
+
+        SSTableInfo(Version version, SSTableId id, SSTableFormat.Type format, Component component)
         {
-            indexName = tableDir.name();
-            tableDir = parentOf(name, tableDir);
+            this.version = version;
+            this.id = id;
+            this.format = format;
+            this.component = component;
         }
-
-        // Then it can be a backup or a snapshot
-        if (tableDir.name().equals(Directories.BACKUPS_SUBDIR))
-            tableDir = tableDir.parent();
-        else if (parentOf(name, tableDir).name().equals(Directories.SNAPSHOT_SUBDIR))
-            tableDir = parentOf(name, parentOf(name, tableDir));
-
-        String table = tableDir.name().split("-")[0] + indexName;
-        String keyspace = parentOf(name, tableDir).name();
-
-        return Pair.create(new Descriptor(version, directory, keyspace, table, id, format), component);
     }
 
     private static File parentOf(String name, File file)
