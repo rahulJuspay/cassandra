@@ -16,30 +16,21 @@
  * limitations under the License.
  */
 
-package org.apache.cassandra.cql3;
+package org.apache.cassandra.cql3.functions.masking;
 
-import java.util.Collection;
+import org.apache.cassandra.cql3.CQL3Type;
 
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import static java.lang.String.format;
 
 /**
- * This base class tests all keywords which took a long time. Hence it was split into multiple
- * KeywordTestSplitN to prevent CI timing out. If timeouts reappear split it further
+ * Tests for {@link DefaultMaskingFunction}.
  */
-@RunWith(Parameterized.class)
-public class KeywordTestSplit2 extends KeywordTestBase
+public class DefaultMaskingFunctionTest extends MaskingFunctionTester
 {
-    static int SPLIT = 2;
-    static int TOTAL_SPLITS = 2;
-
-    @Parameterized.Parameters(name = "keyword {0} isReserved {1}")
-    public static Collection<Object[]> keywords() {
-        return KeywordTestBase.getKeywordsForSplit(SPLIT, TOTAL_SPLITS);
-    }
-
-    public KeywordTestSplit2(String keyword, boolean isReserved)
+    @Override
+    protected void testMaskingOnColumn(String name, CQL3Type type, Object value) throws Throwable
     {
-        super(keyword, isReserved);
+        assertRows(execute(format("SELECT mask_default(%s) FROM %%s", name)),
+                   row(type.getType().getMaskedValue()));
     }
 }

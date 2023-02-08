@@ -875,6 +875,9 @@ public class Config
     public volatile DurationSpec.LongNanosecondsBound streaming_state_expires = new DurationSpec.LongNanosecondsBound("3d");
     public volatile DataStorageSpec.LongBytesBound streaming_state_size = new DataStorageSpec.LongBytesBound("40MiB");
 
+    public volatile boolean streaming_stats_enabled = true;
+    public volatile DurationSpec.IntSecondsBound streaming_slow_events_log_timeout = new DurationSpec.IntSecondsBound("10s");
+
     /** The configuration of startup checks. */
     public volatile Map<StartupCheckType, Map<String, Object>> startup_checks = new HashMap<>();
 
@@ -1060,6 +1063,8 @@ public class Config
     public volatile int paxos_repair_parallelism = -1;
 
     public volatile boolean sstable_read_rate_persistence_enabled = false;
+
+    public volatile boolean client_request_size_metrics_enabled = true;
 
     public volatile int max_top_size_partition_count = 10;
     public volatile int max_top_tombstone_partition_count = 10;

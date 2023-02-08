@@ -44,8 +44,8 @@ num_tokens: 16
 allocate_tokens_for_local_replication_factor: 3
 
 # initial_token allows you to specify tokens manually.  While you can use it with
-# vnodes (num_tokens > 1, above) -- in which case you should provide a 
-# comma-separated list -- it's primarily used when adding nodes to legacy clusters 
+# vnodes (num_tokens > 1, above) -- in which case you should provide a
+# comma-separated list -- it's primarily used when adding nodes to legacy clusters
 # that do not have vnodes enabled.
 # initial_token:
 
@@ -290,7 +290,7 @@ credentials_validity: 2000ms
 partitioner: org.apache.cassandra.dht.Murmur3Partitioner
 
 # Directories where Cassandra should store data on disk. If multiple
-# directories are specified, Cassandra will spread data evenly across 
+# directories are specified, Cassandra will spread data evenly across
 # them by partitioning the token ranges.
 # If not set, the default directory is $CASSANDRA_HOME/data/data.
 # data_file_directories:
@@ -428,7 +428,7 @@ key_cache_save_period: 4h
 #   Fully off-heap row cache implementation (default).
 #
 # org.apache.cassandra.cache.SerializingCacheProvider
-#   This is the row cache implementation availabile
+#   This is the row cache implementation available
 #   in previous releases of Cassandra.
 # row_cache_class_name: org.apache.cassandra.cache.OHCProvider
 
@@ -496,8 +496,8 @@ counter_cache_save_period: 7200s
 # Min unit: s
 # cache_load_timeout: 30s
 
-# commitlog_sync may be either "periodic", "group", or "batch." 
-# 
+# commitlog_sync may be either "periodic", "group", or "batch."
+#
 # When in batch mode, Cassandra won't ack writes until the commit log
 # has been flushed to disk.  Each incoming write will trigger the flush task.
 # commitlog_sync_batch_window_in_ms is a deprecated value. Previously it had
@@ -578,6 +578,9 @@ seed_provider:
       # seeds is actually a comma-delimited list of addresses.
       # Ex: "<ip1>,<ip2>,<ip3>"
       - seeds: "127.0.0.1:7000"
+      # If set to "true", SimpleSeedProvider will return all IP addresses for a DNS name,
+      # based on the configured name service on the system. Defaults to "false".
+      #  resolve_multiple_ip_addresses_per_dns_record: "false"
 
 # For workloads with more data than can fit in memory, Cassandra's
 # bottleneck will be reads that need to fetch data from
@@ -937,7 +940,7 @@ incremental_backups: false
 snapshot_before_compaction: false
 
 # Whether or not a snapshot is taken of the data before keyspace truncation
-# or dropping of column families. The STRONGLY advised default of true 
+# or dropping of column families. The STRONGLY advised default of true
 # should be used to provide data safety. If you set this flag to false, you will
 # lose data on truncation or drop.
 auto_snapshot: true
@@ -991,7 +994,7 @@ column_index_cache_size: 2KiB
 #
 # concurrent_compactors defaults to the smaller of (number of disks,
 # number of cores), with a minimum of 2 and a maximum of 8.
-# 
+#
 # If your data directories are backed by SSD, you should increase this
 # to the number of cores.
 # concurrent_compactors: 1
@@ -1019,7 +1022,7 @@ compaction_throughput: 64MiB/s
 
 # When compacting, the replacement sstable(s) can be opened before they
 # are completely written, and used in place of the prior sstables for
-# any range that has been written. This helps to smoothly transfer reads 
+# any range that has been written. This helps to smoothly transfer reads
 # between the sstables, reducing page cache churn and keeping hot rows hot
 # Set sstable_preemptive_open_interval to null for disabled which is equivalent to
 # sstable_preemptive_open_interval_in_mb being negative
@@ -1167,10 +1170,10 @@ slow_query_log_timeout: 500ms
 # Enable operation timeout information exchange between nodes to accurately
 # measure request timeouts.  If disabled, replicas will assume that requests
 # were forwarded to them instantly by the coordinator, which means that
-# under overload conditions we will waste that much extra time processing 
+# under overload conditions we will waste that much extra time processing
 # already-timed-out requests.
 #
-# Warning: It is generally assumed that users have setup NTP on their clusters, and that clocks are modestly in sync, 
+# Warning: It is generally assumed that users have setup NTP on their clusters, and that clocks are modestly in sync,
 # since this is a requirement for general correctness of last write wins.
 # internode_timeout: true
 
@@ -1189,6 +1192,16 @@ slow_query_log_timeout: 500ms
 # Increase this when you notice that joins are CPU-bound rather that network
 # bound (for example a few nodes with big files).
 # streaming_connections_per_host: 1
+
+# Settings for stream stats tracking; used by system_views.streaming table
+# How long before a stream is evicted from tracking; this impacts both historic and currently running
+# streams.
+# streaming_state_expires: 3d
+# How much memory may be used for tracking before evicting session from tracking; once crossed
+# historic and currently running streams maybe impacted.
+# streaming_state_size: 40MiB
+# Enable/Disable tracking of streaming stats
+# streaming_stats_enabled: true
 
 # Allows denying configurable access (rw/rr) to operations on configured ks, table, and partitions, intended for use by
 # operators to manage cluster health vs application access. See CASSANDRA-12106 and CEP-13 for more details.
@@ -1573,7 +1586,7 @@ compaction_tombstone_warning_threshold: 100000
 # max_concurrent_automatic_sstable_upgrades: 1
 
 # Audit logging - Logs every incoming CQL command request, authentication to a node. See the docs
-# on audit_logging for full details about the various configuration options.
+# on audit_logging for full details about the various configuration options and production tips.
 audit_logging_options:
   enabled: false
   logger:
@@ -1589,10 +1602,12 @@ audit_logging_options:
   # block: true
   # max_queue_weight: 268435456 # 256 MiB
   # max_log_size: 17179869184 # 16 GiB
-  ## archive command is "/path/to/script.sh %path" where %path is replaced with the file being rolled:
+  #
+  ## If archive_command is empty or unset, Cassandra uses a built-in DeletingArchiver that deletes the oldest files if ``max_log_size`` is reached.
+  ## If archive_command is set, Cassandra does not use DeletingArchiver, so it is the responsibility of the script to make any required cleanup.
+  ## Example: "/path/to/script.sh %path" where %path is replaced with the file being rolled.
   # archive_command:
   # max_archive_retries: 10
-
 
 # default options for full query logging - these can be overridden from command line when executing
 # nodetool enablefullquerylog

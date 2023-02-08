@@ -429,7 +429,7 @@ public class TupleType extends AbstractType<ByteBuffer>
             throw new MarshalException(String.format(
                     "Expected a list representation of a tuple, but got a %s: %s", parsed.getClass().getSimpleName(), parsed));
 
-        List list = (List) parsed;
+        List<?> list = (List<?>) parsed;
 
         if (list.size() > types.size())
             throw new MarshalException(String.format("Tuple contains extra items (expected %s): %s", types.size(), parsed));
@@ -465,8 +465,8 @@ public class TupleType extends AbstractType<ByteBuffer>
             if (i > 0)
                 sb.append(", ");
 
-            ByteBuffer value = CollectionSerializer.readValue(duplicated, ByteBufferAccessor.instance, offset, protocolVersion);
-            offset += CollectionSerializer.sizeOfValue(value, ByteBufferAccessor.instance, protocolVersion);
+            ByteBuffer value = CollectionSerializer.readValue(duplicated, ByteBufferAccessor.instance, offset);
+            offset += CollectionSerializer.sizeOfValue(value, ByteBufferAccessor.instance);
             if (value == null)
                 sb.append("null");
             else
@@ -548,5 +548,18 @@ public class TupleType extends AbstractType<ByteBuffer>
     public String toString()
     {
         return getClass().getName() + TypeParser.stringifyTypeParameters(types, true);
+    }
+
+    @Override
+    public ByteBuffer getMaskedValue()
+    {
+        ByteBuffer[] buffers = new ByteBuffer[types.size()];
+        for (int i = 0; i < types.size(); i++)
+        {
+            AbstractType<?> type = types.get(i);
+            buffers[i] = type.getMaskedValue();
+        }
+
+        return serializer.serialize(buildValue(buffers));
     }
 }
