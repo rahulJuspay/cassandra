@@ -41,7 +41,7 @@ jobs:
           cp -R NOTICE.txt apache-cassandra/cassandra
           cp -R CHANGES.txt apache-cassandra/cassandra
           cp -R LICENSE.txt apache-cassandra/cassandra
-          cp -R build/apache-cassandra-4.1.1-SNAPSHOT.jar apache-cassandra/cassandra/lib
+          cp -R build/apache-cassandra-*.jar apache-cassandra/cassandra/lib
     - name: Compress 
       uses: a7ul/tar-action@v1.1.0
       id: compress
