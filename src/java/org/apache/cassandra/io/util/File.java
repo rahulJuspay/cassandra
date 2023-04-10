@@ -23,7 +23,12 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.channels.FileChannel;
-import java.nio.file.*; // checkstyle: permit this import
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.Paths; // checkstyle: permit this import
 import java.util.Objects;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
@@ -31,7 +36,6 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
-
 import javax.annotation.Nullable;
 
 import com.google.common.util.concurrent.RateLimiter;
@@ -47,7 +51,6 @@ import static org.apache.cassandra.utils.Throwables.maybeFail;
  *
  * TODO codebase probably should not use tryList, as unexpected exceptions are hidden;
  *      probably want to introduce e.g. listIfExists
- * TODO codebase probably should not use Paths.get() to ensure we can override the filesystem
  */
 public class File implements Comparable<File>
 {
@@ -118,7 +121,7 @@ public class File implements Comparable<File>
      */
     public File(URI path)
     {
-        this(Paths.get(path));
+        this(Paths.get(path)); //TODO unsafe if uri is file:// as it uses default file system and not File.filesystem
         if (!path.isAbsolute() || path.isOpaque()) throw new IllegalArgumentException();
     }
 
@@ -128,9 +131,14 @@ public class File implements Comparable<File>
     public File(Path path)
     {
         if (path != null && path.getFileSystem() != filesystem)
-            throw new IllegalArgumentException("Incompatible file system");
+            throw new IllegalArgumentException("Incompatible file system; path FileSystem (" + path.getFileSystem() + ") is not the same reference (" + filesystem + ")");
 
         this.path = path;
+    }
+
+    public static Path getPath(String first, String... more)
+    {
+        return filesystem.getPath(first, more);
     }
 
     /**
@@ -746,6 +754,13 @@ public class File implements Comparable<File>
     public FileInputStreamPlus newInputStream() throws NoSuchFileException
     {
         return new FileInputStreamPlus(this);
+    }
+
+    public File withSuffix(String suffix)
+    {
+        if (path == null)
+            throw new IllegalStateException("Cannot suffix an empty path");
+        return new File(path.getParent().resolve(path.getFileName().toString() + suffix));
     }
 
     private Path toPathForWrite()

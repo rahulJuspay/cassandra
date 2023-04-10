@@ -32,10 +32,19 @@
     <property name="debuglevel" value="source,lines,vars"/>
 
     <!-- default version and SCM information -->
-    <property name="base.version" value="4.2"/>
+    <property name="base.version" value="5.0"/>
     <property name="scm.connection" value="scm:https://gitbox.apache.org/repos/asf/cassandra.git"/>
     <property name="scm.developerConnection" value="scm:https://gitbox.apache.org/repos/asf/cassandra.git"/>
     <property name="scm.url" value="https://gitbox.apache.org/repos/asf?p=cassandra.git;a=tree"/>
+
+    <!-- JDKs supported.
+        All releases are built with the default JDK.
+        Builds with non-default JDKs are considered experimental and for development and testing purposes.
+        When building, javac's source and target flags are set to the jdk used, so lower JDKs are not supported at runtime.
+        The use of both CASSANDRA_USE_JDK11 and use-jdk11 is deprecated.
+    -->
+    <property name="java.default" value="1.8" />
+    <property name="java.supported" value="1.8,11,17" />
 
     <!-- directory details -->
     <property name="basedir" value="."/>
@@ -136,7 +145,7 @@
     <!-- When updating ASM, please, do consider whether you might need to update also FBUtilities#ASM_BYTECODE_VERSION
       and the simulator InterceptClasses#BYTECODE_VERSION, in particular if we are looking to provide Cassandra support
       for newer JDKs (CASSANDRA-17873). -->
-    <property name="asm.version" value="9.3"/>
+    <property name="asm.version" value="9.4"/>
     <property name="allocation-instrumenter.version" value="3.1.0"/>
 
     <condition property="is.source.artifact">
@@ -153,24 +162,17 @@
          Debug level output still needs to be retrieved from the log file.  -->
     <macrodef name="keepbrief">
         <sequential>
-                <javac srcdir="test/anttasks" destdir="${test.classes}" includeantruntime="true"/>
+                <javac srcdir="test/anttasks" destdir="${test.classes}" includeantruntime="true" excludes="**/JdkProperties.java" />
                 <taskdef name="KeepBriefBrief" classname="org.apache.cassandra.anttasks.KeepBriefBrief" classpath="${test.classes}"/>
                 <KeepBriefBrief property="cassandra.keepBriefBrief"/>
         </sequential>
     </macrodef>
 
-    <condition property="java.version.8">
-        <equals arg1="${ant.java.version}" arg2="1.8"/>
-    </condition>
-    <condition property="java.version.11">
-      <!-- This includes every JDK other than 8; so JDK 9 is flagged as JDK 11, and JDK 17 is as well... at the moment this is desired behavior
-      and may be relooked at once JDK 8 support is dropped -->
-        <not><isset property="java.version.8"/></not>
-    </condition>
-    <fail message="Unsupported JDK version used: ${ant.java.version}"><condition><not><or>
-        <isset property="java.version.8"/>
-        <isset property="java.version.11"/>
-    </or></not></condition></fail>
+    <fail message="Unsupported JDK version used: ${ant.java.version}">
+        <condition><not><contains string="${java.supported}" substring="${ant.java.version}"/></not></condition>
+    </fail>
+    <condition property="is.java.default"><equals arg1="${ant.java.version}" arg2="${java.default}"/></condition>
+    <echo unless:true="${is.java.default}" message="Non default JDK version used: ${ant.java.version}"/>
 
     <condition property="arch_x86">
       <equals arg1="${os.arch}" arg2="x86" />
@@ -214,9 +216,52 @@
     </resources>
     <pathconvert property="_jvm_args_concat" refid="_jvm11_arg_items" pathsep=" "/>
     <condition property="java11-jvmargs" value="${_jvm_args_concat}" else="">
-        <not>
-            <equals arg1="${ant.java.version}" arg2="1.8"/>
-        </not>
+        <equals arg1="${ant.java.version}" arg2="11"/>
+    </condition>
+
+    <resources id="_jvm17_arg_items">
+        <string>-Djdk.attach.allowAttachSelf=true</string>
+        <string>-XX:+UseG1GC</string>
+        <string>-XX:+ParallelRefProcEnabled</string>
+        <string>-XX:MaxTenuringThreshold=1</string>
+        <string>-XX:G1HeapRegionSize=16m</string>
+
+        <string>--add-exports java.base/jdk.internal.misc=ALL-UNNAMED</string>
+        <string>--add-exports java.base/jdk.internal.ref=ALL-UNNAMED</string>
+        <string>--add-exports java.base/sun.nio.ch=ALL-UNNAMED</string>
+        <string>--add-exports java.management.rmi/com.sun.jmx.remote.internal.rmi=ALL-UNNAMED</string>
+        <string>--add-exports java.rmi/sun.rmi.registry=ALL-UNNAMED</string>
+        <string>--add-exports java.rmi/sun.rmi.server=ALL-UNNAMED</string>
+        <string>--add-exports java.sql/java.sql=ALL-UNNAMED</string>
+        <string>--add-exports java.base/java.lang.ref=ALL-UNNAMED</string>
+        <string>--add-exports jdk.unsupported/sun.misc=ALL-UNNAMED</string>
+        <string>--add-exports jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED</string>
+
+        <string>--add-opens java.base/java.lang.module=ALL-UNNAMED</string>
+        <string>--add-opens java.base/java.net=ALL-UNNAMED</string>
+        <string>--add-opens java.base/jdk.internal.loader=ALL-UNNAMED</string>
+        <string>--add-opens java.base/jdk.internal.ref=ALL-UNNAMED</string>
+        <string>--add-opens java.base/jdk.internal.reflect=ALL-UNNAMED</string>
+        <string>--add-opens java.base/jdk.internal.math=ALL-UNNAMED</string>
+        <string>--add-opens java.base/jdk.internal.module=ALL-UNNAMED</string>
+        <string>--add-opens java.base/jdk.internal.util.jar=ALL-UNNAMED</string>
+        <string>--add-opens jdk.management/com.sun.management.internal=ALL-UNNAMED</string>
+        <string>--add-opens jdk.management/com.sun.management.internal=ALL-UNNAMED</string>
+
+        <string>--add-opens java.base/sun.nio.ch=ALL-UNNAMED</string>
+        <string>--add-opens java.base/java.io=ALL-UNNAMED</string>
+        <string>--add-opens java.base/java.nio=ALL-UNNAMED</string>
+        <string>--add-opens java.base/java.util.concurrent=ALL-UNNAMED</string>
+        <string>--add-opens java.base/java.util=ALL-UNNAMED</string>
+        <string>--add-opens java.base/java.util.concurrent.atomic=ALL-UNNAMED</string>
+        <string>--add-opens java.base/java.lang=ALL-UNNAMED</string>
+        <string>--add-opens java.base/java.math=ALL-UNNAMED</string>
+        <string>--add-opens java.base/java.lang.reflect=ALL-UNNAMED</string>
+        <string>--add-opens java.base/java.net=ALL-UNNAMED</string>
+    </resources>
+    <pathconvert property="_jvm_args_concat2" refid="_jvm17_arg_items" pathsep=" "/>
+    <condition property="java17-jvmargs" value="${_jvm_args_concat2}" else="">
+        <equals arg1="${ant.java.version}" arg2="17"/>
     </condition>
 
     <!--
@@ -231,6 +276,7 @@
       In java 11 we also need to set a system property to enable netty to use Unsafe direct byte
       buffer construction (see CASSANDRA-16493)
     -->
+    <!-- Leaving  _jvm8_test_arg_items for now as we are not dropping Java 8 yet but it will be useless after CASSANDRA-18258-->
     <resources id="_jvm8_test_arg_items">
       <!-- TODO see CASSANDRA-16212 - we seem to OOM non stop now after CASSANDRA-16212, so to have clean CI while this gets looked into, disabling limiting metaspace
         <string>-XX:MaxMetaspaceExpansion=64M</string>
@@ -244,33 +290,30 @@
         <string>-Dio.netty.tryReflectionSetAccessible=true</string>
     </resources>
     <pathconvert property="_jvm11_test_arg_items_concat" refid="_jvm11_test_arg_items" pathsep=" "/>
-    <condition property="_std-test-jvmargs" value="${_jvm11_test_arg_items_concat}" else="${_jvm8_test_arg_items_concat}">
-        <not>
-            <equals arg1="${ant.java.version}" arg2="1.8"/>
-        </not>
+    <resources id="_jvm17_test_arg_items">
+        <string>-Dio.netty.tryReflectionSetAccessible=true</string>
+    </resources>
+    <pathconvert property="_jvm17_test_arg_items_concat" refid="_jvm17_test_arg_items" pathsep=" "/>
+    <condition property="_std-test-jvmargs11" value="${_jvm11_test_arg_items_concat}" else=" ">
+            <equals arg1="${ant.java.version}" arg2="11"/>
+    </condition>
+    <condition property="_std-test-jvmargs17" value="${_jvm17_test_arg_items_concat}" else=" ">
+        <equals arg1="${ant.java.version}" arg2="17"/>
     </condition>
 
     <!-- needed to compile org.apache.cassandra.utils.JMXServerUtils -->
-    <condition property="jdk11-javac-exports" value="--add-exports java.rmi/sun.rmi.registry=ALL-UNNAMED" else="">
+    <condition property="jdk11plus-javac-exports" value="--add-exports java.rmi/sun.rmi.registry=ALL-UNNAMED" else="">
         <not>
             <equals arg1="${ant.java.version}" arg2="1.8"/>
         </not>
     </condition>
-    <condition property="jdk11-javadoc-exports" value="${jdk11-javac-exports} --frames" else="">
+    <condition property="jdk11plus-javadoc-exports" value="${jdk11plus-javac-exports} --frames" else="">
         <not>
             <equals arg1="${ant.java.version}" arg2="1.8"/>
         </not>
     </condition>
-
-    <condition property="build.java.11">
-        <istrue value="${use.jdk11}"/>
-    </condition>
-
-    <condition property="source.version" value="8" else="11">
-        <equals arg1="${java.version.8}" arg2="true"/>
-    </condition>
-    <condition property="target.version" value="8" else="11">
-        <equals arg1="${java.version.8}" arg2="true"/>
+    <condition property="checkstyle.version" value="8.45.1" else="10.8.1">
+        <equals arg1="${ant.java.version}" arg2="1.8"/>
     </condition>
 
     <!--
@@ -299,9 +342,9 @@
     <sequential>
       <javadoc destdir="@{destdir}" author="true" version="true" use="true"
         windowtitle="${ant.project.name} API" classpathref="cassandra.classpath"
-        bottom="Copyright &amp;copy; 2009-2022 The Apache Software Foundation"
+        bottom="Copyright &amp;copy; 2009- The Apache Software Foundation"
         useexternalfile="yes" encoding="UTF-8" failonerror="false"
-        maxmemory="256m" additionalparam="${jdk11-javadoc-exports}">
+        maxmemory="256m" additionalparam="${jdk11plus-javadoc-exports}">
         <filesets/>
       </javadoc>
       <fail message="javadoc failed">
@@ -314,57 +357,10 @@
     </sequential>
   </macrodef>
 
-    <target name="validate-build-conf">
-        <condition property="use-jdk11">
-            <or>
-                <isset property="build.java.11"/>
-                <istrue value="${env.CASSANDRA_USE_JDK11}"/>
-            </or>
-        </condition>
-        <fail message="Inconsistent JDK11 options set">
-            <condition>
-                    <and>
-                        <istrue value="${env.CASSANDRA_USE_JDK11}"/>
-                        <isset property="use.jdk11"/>
-                        <not>
-                            <istrue value="${use.jdk11}"/>
-                        </not>
-                    </and>
-            </condition>
-                </fail>
-        <fail message="Inconsistent JDK11 options set">
-            <condition>
-                    <and>
-                        <isset property="env.CASSANDRA_USE_JDK11"/>
-                        <not>
-                            <istrue value="${env.CASSANDRA_USE_JDK11}"/>
-                        </not>
-                        <istrue value="${use.jdk11}"/>
-                    </and>
-            </condition>
-        </fail>
-        <fail message="-Duse.jdk11=true or $CASSANDRA_USE_JDK11=true cannot be set when building from java 8">
-            <condition>
-                <not><or>
-                    <not><isset property="java.version.8"/></not>
-                    <not><isset property="use-jdk11"/></not>
-                </or></not>
-            </condition>
-        </fail>
-        <fail message="-Duse.jdk11=true or $CASSANDRA_USE_JDK11=true must be set when building from java 11">
-            <condition>
-                <not><or>
-                    <isset property="java.version.8"/>
-                    <isset property="use-jdk11"/>
-                </or></not>
-            </condition>
-        </fail>
-    </target>
-
     <!--
         Setup the output directories.
     -->
-    <target name="init" depends="validate-build-conf">
+    <target name="init" >
         <fail unless="is.source.artifact"
             message="Not a source artifact, stopping here." />
         <mkdir dir="${build.classes.main}"/>
@@ -376,6 +372,13 @@
         <mkdir dir="${build.dir.lib}"/>
         <mkdir dir="${jacoco.export.dir}"/>
         <mkdir dir="${jacoco.partials.dir}"/>
+
+        <!-- Set up jdk specific properties -->
+        <javac includes="**/JdkProperties.java" srcdir="test/anttasks" destdir="${test.classes}" includeantruntime="true" source="${java.default}" target="${java.default}">
+          <compilerarg value="-Xlint:-options"/>
+        </javac>
+        <taskdef name="JdkProperties" classname="org.apache.cassandra.anttasks.JdkProperties" classpath="${test.classes}"/>
+        <JdkProperties/>
     </target>
 
     <target name="clean" description="Remove all locally created artifacts">
@@ -454,10 +457,6 @@
         <jflex file="${build.src.java}/org/apache/cassandra/index/sasi/analyzer/StandardTokenizerImpl.jflex" destdir="${build.src.gen-java}/" />
     </target>
 
-    <target name="echo-base-version">
-        <echo message="${base.version}" />
-    </target>
-
     <!-- create properties file with C version -->
     <target name="createVersionPropFile" depends="get-git-sha">
       <taskdef name="propertyfile" classname="org.apache.tools.ant.taskdefs.optional.PropertyFile"/>
@@ -480,6 +479,7 @@
         <jvmarg value="-javaagent:${build.lib}/jamm-${jamm.version}.jar" />
         <jvmarg value="-ea"/>
         <jvmarg line="${java11-jvmargs}"/>
+        <jvmarg line="${java17-jvmargs}"/>
       </java>
     </target>
 
@@ -492,15 +492,15 @@
 
     <target name="_build_java">
         <!-- Note: we cannot use javac's 'release' option, as that does not allow accessing sun.misc.Unsafe nor
-        Nashorn's ClassFilter class as any javac modules option is invalid for relase 8. -->
-        <echo message="Compiling for Java ${target.version}..."/>
+        Nashorn's ClassFilter class as any javac modules option is invalid for release 8. -->
+        <echo message="Compiling for Java ${ant.java.version}..."/>
         <javac
                debug="true" debuglevel="${debuglevel}" encoding="utf-8"
-               destdir="${build.classes.main}" includeantruntime="false" source="${source.version}" target="${target.version}">
+               destdir="${build.classes.main}" includeantruntime="false" source="${ant.java.version}" target="${ant.java.version}">
             <src path="${build.src.java}"/>
             <src path="${build.src.gen-java}"/>
             <compilerarg value="-XDignore.symbol.file"/>
-            <compilerarg line="${jdk11-javac-exports}"/>
+            <compilerarg line="${jdk11plus-javac-exports}"/>
             <classpath>
                 <path refid="cassandra.classpath"/>
             </classpath>
@@ -528,7 +528,7 @@
 
     <target name="stress-build-test" depends="stress-build" description="Compile stress tests">
         <javac debug="true" debuglevel="${debuglevel}" destdir="${stress.test.classes}"
-               source="${source.version}" target="${target.version}"
+               source="${ant.java.version}" target="${ant.java.version}"
                includeantruntime="false" encoding="utf-8">
             <classpath>
                 <path refid="cassandra.classpath.test"/>
@@ -545,7 +545,7 @@
     <target name="_stress_build">
     	<mkdir dir="${stress.build.classes}" />
         <javac compiler="modern" debug="true" debuglevel="${debuglevel}"
-               source="${source.version}" target="${target.version}"
+               source="${ant.java.version}" target="${ant.java.version}"
                encoding="utf-8" destdir="${stress.build.classes}" includeantruntime="true">
             <src path="${stress.build.src}" />
             <classpath>
@@ -586,7 +586,7 @@
 
     <target name="fqltool-build-test" depends="fqltool-build" description="Compile fqltool tests">
         <javac debug="true" debuglevel="${debuglevel}" destdir="${fqltool.test.classes}"
-               source="${source.version}" target="${target.version}"
+               source="${ant.java.version}" target="${ant.java.version}"
                includeantruntime="false" encoding="utf-8">
             <classpath>
                 <path refid="cassandra.classpath.test"/>
@@ -603,7 +603,7 @@
     <target name="_fqltool_build">
     	<mkdir dir="${fqltool.build.classes}" />
         <javac compiler="modern" debug="true" debuglevel="${debuglevel}"
-               source="${source.version}" target="${target.version}"
+               source="${ant.java.version}" target="${ant.java.version}"
                encoding="utf-8" destdir="${fqltool.build.classes}" includeantruntime="true">
             <src path="${fqltool.build.src}" />
             <classpath>
@@ -640,7 +640,7 @@
     <target name="_simulator-asm_build">
     	<mkdir dir="${simulator-asm.build.classes}" />
         <javac compiler="modern" debug="true" debuglevel="${debuglevel}"
-               source="${source.version}" target="${target.version}"
+               source="${ant.java.version}" target="${ant.java.version}"
                encoding="utf-8" destdir="${simulator-asm.build.classes}" includeantruntime="true">
             <src path="${simulator-asm.build.src}" />
             <classpath>
@@ -657,7 +657,7 @@
     <target name="_simulator-bootstrap_build">
     	<mkdir dir="${simulator-bootstrap.build.classes}" />
         <javac compiler="modern" debug="true" debuglevel="${debuglevel}"
-               source="${source.version}" target="${target.version}"
+               source="${ant.java.version}" target="${ant.java.version}"
                encoding="utf-8" destdir="${simulator-bootstrap.build.classes}" includeantruntime="true">
             <src path="${simulator-bootstrap.build.src}" />
             <classpath>
@@ -1011,8 +1011,8 @@
      debuglevel="${debuglevel}"
      destdir="${test.classes}"
      includeantruntime="true"
-     source="${source.version}"
-     target="${target.version}"
+     source="${ant.java.version}"
+     target="${ant.java.version}"
      encoding="utf-8">
      <classpath>
         <path refid="cassandra.classpath.test"/>
@@ -1129,7 +1129,7 @@
         <jvmarg value="-Dcassandra.test.sstableformatdevelopment=true"/>
         <!-- The first time SecureRandom initializes can be slow if it blocks on /dev/random -->
         <jvmarg value="-Djava.security.egd=file:/dev/urandom" />
-        <jvmarg value="-Dcassandra.testtag=@{testtag}"/>
+        <jvmarg value="-Dcassandra.testtag=@{testtag}.jdk${ant.java.version}"/>
         <jvmarg value="-Dcassandra.keepBriefBrief=${cassandra.keepBriefBrief}" />
         <jvmarg value="-Dcassandra.strict.runtime.checks=true" />
         <jvmarg value="-Dcassandra.reads.thresholds.coordinator.defensive_checks_enabled=true" /> <!-- enable defensive checks -->
@@ -1137,9 +1137,11 @@
         <jvmarg value="-Dcassandra.test.messagingService.nonGracefulShutdown=${cassandra.test.messagingService.nonGracefulShutdown}"/>
         <jvmarg value="-Dcassandra.use_nix_recursive_delete=${cassandra.use_nix_recursive_delete}"/>
         <jvmarg line="${java11-jvmargs}"/>
+        <jvmarg line="${java17-jvmargs}"/>
         <!-- disable shrinks in quicktheories CASSANDRA-15554 -->
         <jvmarg value="-DQT_SHRINKS=0"/>
-        <jvmarg line="${_std-test-jvmargs}" />
+        <jvmarg line="${_std-test-jvmargs11}" />
+        <jvmarg line="${_std-test-jvmargs17}" />
         <jvmarg line="${test.jvm.args}" />
         <optjvmargs/>
         <!-- Uncomment to debug unittest, attach debugger to port 1416 -->
@@ -1786,13 +1788,13 @@
       </java>
   </target>
 
-  <target name="_maybe_update_idea_to_java11" if="java.version.11">
+  <target name="_maybe_update_idea_to_java11" depends="init" if="java.version.11">
     <replace file="${eclipse.project.name}.iml" token="JDK_1_8" value="JDK_11"/>
     <replace file=".idea/misc.xml" token="JDK_1_8" value="JDK_11"/>
     <replace file=".idea/misc.xml" token="1.8" value="11"/>
     <replaceregexp file=".idea/workspace.xml"
-                   match="name=&quot;VM_PARAMETERS&quot; value=&quot;(.*)&quot;"
-                   replace="name=&quot;VM_PARAMETERS&quot; value=&quot;\1 ${java11-jvmargs}&quot;"
+                   match="name=&quot;VM_PARAMETERS&quot; value=&quot;(.*)"
+                   replace="name=&quot;VM_PARAMETERS&quot; value=&quot;\1 ${java11-jvmargs}"
                    byline="true"/>
 
       <echo file=".idea/compiler.xml"><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
@@ -1801,6 +1803,7 @@
     <option name="ADDITIONAL_OPTIONS_STRING" value="--add-exports java.rmi/sun.rmi.registry=ALL-UNNAMED" />
   </component>
 </project>]]></echo>
+      <echo>"IDE configuration updated for use with JDK11"</echo>
   </target>
 
   <!-- Generate IDEA project description files -->
@@ -1923,9 +1926,9 @@
 	    failonerror="true"
             maxmemory="512m">
             <arg value="-source"/>
-	    <arg value="${source.version}" />
+	    <arg value="${java.default}" />
 	    <arg value="-target"/>
-	    <arg value="${target.version}" />
+	    <arg value="${ant.java.version}" />
 	    <arg value="-d" />
             <arg value="none" />
 	    <arg value="-proc:none" />
@@ -1940,16 +1943,14 @@
   </target>
 
   <target name="init-checkstyle" depends="resolver-retrieve-build,build-project" unless="no-checkstyle">
-      <path id="checkstyle.lib.path">
-          <fileset dir="${test.lib}/jars" includes="*.jar"/>
-      </path>
+      <echo message="checkstyle.version=${checkstyle.version}"/>
       <!-- Sevntu custom checks are retrieved by Ivy into lib folder
          and will be accessible to checkstyle-->
       <taskdef resource="com/puppycrawl/tools/checkstyle/ant/checkstyle-ant-task.properties"
-               classpathref="checkstyle.lib.path"/>
+               classpathref="checkstyle.classpath"/>
   </target>
 
-  <target name="checkstyle" depends="init-checkstyle,build-project" description="Run custom checkstyle code analysis" if="java.version.8" unless="no-checkstyle">
+  <target name="checkstyle" depends="init-checkstyle,build-project" description="Run custom checkstyle code analysis" unless="no-checkstyle">
       <property name="checkstyle.log.dir" value="${build.dir}/checkstyle" />
       <property name="checkstyle.report.file" value="${checkstyle.log.dir}/checkstyle_report.xml"/>
       <mkdir  dir="${checkstyle.log.dir}" />
@@ -1965,7 +1966,7 @@
       </checkstyle>
   </target>
 
-  <target name="checkstyle-test" depends="init-checkstyle,resolver-retrieve-build,build-project" description="Run custom checkstyle code analysis on tests" if="java.version.8" unless="no-checkstyle">
+  <target name="checkstyle-test" depends="init-checkstyle,resolver-retrieve-build,build-project" description="Run custom checkstyle code analysis on tests" unless="no-checkstyle">
       <property name="checkstyle.log.dir" value="${build.dir}/checkstyle" />
       <property name="checkstyle_test.report.file" value="${checkstyle.log.dir}/checkstyle_report_test.xml"/>
       <mkdir  dir="${checkstyle.log.dir}" />
