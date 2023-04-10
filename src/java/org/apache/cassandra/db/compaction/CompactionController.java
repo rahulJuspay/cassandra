@@ -105,14 +105,8 @@ public class CompactionController extends AbstractCompactionController
             return;
         }
 
-        for (SSTableReader reader : overlappingSSTables)
-        {
-            if (reader.isMarkedCompacted())
-            {
-                refreshOverlaps();
-                return;
-            }
-        }
+        if (overlappingSSTables == null || overlappingSSTables.stream().anyMatch(SSTableReader::isMarkedCompacted))
+            refreshOverlaps();
     }
 
     private void refreshOverlaps()
@@ -160,8 +154,8 @@ public class CompactionController extends AbstractCompactionController
     {
         logger.trace("Checking droppable sstables in {}", cfStore);
 
-        if (NEVER_PURGE_TOMBSTONES || compacting == null || cfStore.getNeverPurgeTombstones())
-            return Collections.<SSTableReader>emptySet();
+        if (NEVER_PURGE_TOMBSTONES || compacting == null || cfStore.getNeverPurgeTombstones() || overlapping == null)
+            return Collections.emptySet();
 
         if (cfStore.getCompactionStrategyManager().onlyPurgeRepairedTombstones() && !Iterables.all(compacting, SSTableReader::isRepaired))
             return Collections.emptySet();
@@ -201,7 +195,10 @@ public class CompactionController extends AbstractCompactionController
         }
 
         for (Memtable memtable : cfStore.getTracker().getView().getAllMemtables())
-            minTimestamp = Math.min(minTimestamp, memtable.getMinTimestamp());
+        {
+            if (memtable.getMinTimestamp() != Memtable.NO_MIN_TIMESTAMP)
+                minTimestamp = Math.min(minTimestamp, memtable.getMinTimestamp());
+        }
 
         // At this point, minTimestamp denotes the lowest timestamp of any relevant
         // SSTable or Memtable that contains a constructive value. candidates contains all the
@@ -243,7 +240,7 @@ public class CompactionController extends AbstractCompactionController
     @Override
     public LongPredicate getPurgeEvaluator(DecoratedKey key)
     {
-        if (NEVER_PURGE_TOMBSTONES || !compactingRepaired() || cfs.getNeverPurgeTombstones())
+        if (NEVER_PURGE_TOMBSTONES || !compactingRepaired() || cfs.getNeverPurgeTombstones() || overlapIterator == null)
             return time -> false;
 
         overlapIterator.update(key);
@@ -263,10 +260,13 @@ public class CompactionController extends AbstractCompactionController
 
         for (Memtable memtable : memtables)
         {
-            if (memtable.rowIterator(key) != null)
+            if (memtable.getMinTimestamp() != Memtable.NO_MIN_TIMESTAMP)
             {
-                minTimestampSeen = Math.min(minTimestampSeen, memtable.getMinTimestamp());
-                hasTimestamp = true;
+                if (memtable.rowIterator(key) != null)
+                {
+                    minTimestampSeen = Math.min(minTimestampSeen, memtable.getMinTimestamp());
+                    hasTimestamp = true;
+                }
             }
         }
 

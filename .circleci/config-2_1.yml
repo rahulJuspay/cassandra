@@ -136,6 +136,7 @@ default_env_vars: &default_env_vars
     # REPEATED_ANT_TEST_TARGET: test-jvm-dtest-some
     # REPEATED_ANT_TEST_TARGET: test-cdc
     # REPEATED_ANT_TEST_TARGET: test-compression
+    # REPEATED_ANT_TEST_TARGET: test-trie
     # REPEATED_ANT_TEST_TARGET: test-system-keyspace-directory
     REPEATED_ANT_TEST_TARGET: testsome
     # The name of JUnit class to be run multiple times, for example:
@@ -434,6 +435,30 @@ j8_separate_jobs: &j8_separate_jobs
         requires:
           - start_j11_utests_compression_repeat
           - j8_build
+    - start_j8_utests_trie:
+        type: approval
+    - j8_utests_trie:
+        requires:
+          - start_j8_utests_trie
+          - j8_build
+    - start_j11_utests_trie:
+        type: approval
+    - j11_utests_trie:
+        requires:
+          - start_j11_utests_trie
+          - j8_build
+    - start_j8_utests_trie_repeat:
+        type: approval
+    - j8_utests_trie_repeat:
+        requires:
+          - start_j8_utests_trie_repeat
+          - j8_build
+    - start_j11_utests_trie_repeat:
+        type: approval
+    - j11_utests_trie_repeat:
+        requires:
+          - start_j11_utests_trie_repeat
+          - j8_build
     - start_j8_utests_stress:
         type: approval
     - j8_utests_stress:
@@ -647,7 +672,15 @@ j8_separate_jobs: &j8_separate_jobs
         requires:
           - start_j8_cqlsh_tests
           - j8_build
+    - j8_cqlsh_dtests_py311:
+        requires:
+          - start_j8_cqlsh_tests
+          - j8_build
     - j8_cqlsh_dtests_py38_vnode:
+        requires:
+        - start_j8_cqlsh_tests
+        - j8_build
+    - j8_cqlsh_dtests_py311_vnode:
         requires:
         - start_j8_cqlsh_tests
         - j8_build
@@ -659,6 +692,10 @@ j8_separate_jobs: &j8_separate_jobs
           - start_j8_cqlsh_tests_offheap
           - j8_build
     - j8_cqlsh_dtests_py38_offheap:
+        requires:
+          - start_j8_cqlsh_tests_offheap
+          - j8_build
+    - j8_cqlsh_dtests_py311_offheap:
         requires:
           - start_j8_cqlsh_tests_offheap
           - j8_build
@@ -677,7 +714,15 @@ j8_separate_jobs: &j8_separate_jobs
         requires:
           - start_j11_cqlsh_tests
           - j8_build
+    - j11_cqlsh_dtests_py311:
+        requires:
+          - start_j11_cqlsh_tests
+          - j8_build
     - j11_cqlsh_dtests_py38_vnode:
+        requires:
+          - start_j11_cqlsh_tests
+          - j8_build
+    - j11_cqlsh_dtests_py311_vnode:
         requires:
           - start_j11_cqlsh_tests
           - j8_build
@@ -689,6 +734,10 @@ j8_separate_jobs: &j8_separate_jobs
           - start_j11_cqlsh_tests_offheap
           - j8_build
     - j11_cqlsh_dtests_py38_offheap:
+        requires:
+          - start_j11_cqlsh_tests_offheap
+          - j8_build
+    - j11_cqlsh_dtests_py311_offheap:
         requires:
           - start_j11_cqlsh_tests_offheap
           - j8_build
@@ -857,6 +906,24 @@ j8_pre-commit_jobs: &j8_pre-commit_jobs
     - j11_utests_compression_repeat:
         requires:
           - start_utests_compression
+          - j8_build
+    - start_utests_trie:
+        type: approval
+    - j8_utests_trie:
+        requires:
+          - start_utests_trie
+          - j8_build
+    - j11_utests_trie:
+        requires:
+          - start_utests_trie
+          - j8_build
+    - j8_utests_trie_repeat:
+        requires:
+          - start_utests_trie
+          - j8_build
+    - j11_utests_trie_repeat:
+        requires:
+          - start_utests_trie
           - j8_build
     - start_utests_stress:
         type: approval
@@ -1038,7 +1105,13 @@ j8_pre-commit_jobs: &j8_pre-commit_jobs
     - j8_cqlsh_dtests_py38:
         requires:
           - j8_build
+    - j8_cqlsh_dtests_py311:
+        requires:
+          - j8_build
     - j8_cqlsh_dtests_py38_vnode:
+        requires:
+          - j8_build
+    - j8_cqlsh_dtests_py311_vnode:
         requires:
           - j8_build
     # Java 8 cqlsh dtests offheap
@@ -1052,6 +1125,10 @@ j8_pre-commit_jobs: &j8_pre-commit_jobs
         requires:
           - start_j8_cqlsh_dtests_offheap
           - j8_build
+    - j8_cqlsh_dtests_py311_offheap:
+        requires:
+          - start_j8_cqlsh_dtests_offheap
+          - j8_build
     # Java 11 cqlsh dtests
     - j11_cqlsh_dtests_py3:
         requires:
@@ -1062,7 +1139,13 @@ j8_pre-commit_jobs: &j8_pre-commit_jobs
     - j11_cqlsh_dtests_py38:
         requires:
           - j8_build
+    - j11_cqlsh_dtests_py311:
+        requires:
+          - j8_build
     - j11_cqlsh_dtests_py38_vnode:
+        requires:
+          - j8_build
+    - j11_cqlsh_dtests_py311_vnode:
         requires:
           - j8_build
     # Java 11 cqlsh dtests off-heap
@@ -1073,6 +1156,10 @@ j8_pre-commit_jobs: &j8_pre-commit_jobs
           - start_j11_cqlsh-dtests-offheap
           - j8_build
     - j11_cqlsh_dtests_py38_offheap:
+        requires:
+          - start_j11_cqlsh-dtests-offheap
+          - j8_build
+    - j11_cqlsh_dtests_py311_offheap:
         requires:
           - start_j11_cqlsh-dtests-offheap
           - j8_build
@@ -1120,6 +1207,18 @@ j11_separate_jobs: &j11_separate_jobs
     - j11_jvm_dtests_vnode_repeat:
         requires:
           - start_j11_jvm_dtests_vnode_repeat
+          - j11_build
+    - start_j11_simulator_dtests:
+        type: approval
+    - j11_simulator_dtests:
+        requires:
+          - start_j11_simulator_dtests
+          - j11_build
+    - start_j11_simulator_dtests_repeat:
+        type: approval
+    - j11_simulator_dtests_repeat:
+        requires:
+          - start_j11_simulator_dtests_repeat
           - j11_build
     - start_j11_cqlshlib_tests:
         type: approval
@@ -1196,7 +1295,15 @@ j11_separate_jobs: &j11_separate_jobs
         requires:
           - start_j11_cqlsh_tests
           - j11_build
+    - j11_cqlsh_dtests_py311:
+        requires:
+          - start_j11_cqlsh_tests
+          - j11_build
     - j11_cqlsh_dtests_py38_vnode:
+        requires:
+          - start_j11_cqlsh_tests
+          - j11_build
+    - j11_cqlsh_dtests_py311_vnode:
         requires:
           - start_j11_cqlsh_tests
           - j11_build
@@ -1207,6 +1314,10 @@ j11_separate_jobs: &j11_separate_jobs
           - start_j11_cqlsh-dtests-offheap
           - j11_build
     - j11_cqlsh_dtests_py38_offheap:
+        requires:
+          - start_j11_cqlsh-dtests-offheap
+          - j11_build
+    - j11_cqlsh_dtests_py311_offheap:
         requires:
           - start_j11_cqlsh-dtests-offheap
           - j11_build
@@ -1246,6 +1357,18 @@ j11_separate_jobs: &j11_separate_jobs
     - j11_utests_compression_repeat:
         requires:
           - start_j11_utests_compression_repeat
+          - j11_build
+    - start_j11_utests_trie:
+        type: approval
+    - j11_utests_trie:
+        requires:
+          - start_j11_utests_trie
+          - j11_build
+    - start_j11_utests_trie_repeat:
+        type: approval
+    - j11_utests_trie_repeat:
+        requires:
+          - start_j11_utests_trie_repeat
           - j11_build
     - start_j11_utests_stress:
         type: approval
@@ -1329,6 +1452,12 @@ j11_pre-commit_jobs: &j11_pre-commit_jobs
     - j11_jvm_dtests_vnode_repeat:
         requires:
           - j11_build
+    - j11_simulator_dtests:
+        requires:
+          - j11_build
+    - j11_simulator_dtests_repeat:
+        requires:
+          - j11_build
     - j11_cqlshlib_tests:
         requires:
           - j11_build
@@ -1392,7 +1521,13 @@ j11_pre-commit_jobs: &j11_pre-commit_jobs
     - j11_cqlsh_dtests_py38:
         requires:
           - j11_build
+    - j11_cqlsh_dtests_py311:
+        requires:
+          - j11_build
     - j11_cqlsh_dtests_py38_vnode:
+        requires:
+          - j11_build
+    - j11_cqlsh_dtests_py311_vnode:
         requires:
           - j11_build
     - start_j11_cqlsh-dtests-offheap:
@@ -1402,6 +1537,10 @@ j11_pre-commit_jobs: &j11_pre-commit_jobs
           - start_j11_cqlsh-dtests-offheap
           - j11_build
     - j11_cqlsh_dtests_py38_offheap:
+        requires:
+          - start_j11_cqlsh-dtests-offheap
+          - j11_build
+    - j11_cqlsh_dtests_py311_offheap:
         requires:
           - start_j11_cqlsh-dtests-offheap
           - j11_build
@@ -1435,6 +1574,16 @@ j11_pre-commit_jobs: &j11_pre-commit_jobs
     - j11_utests_compression_repeat:
         requires:
           - start_utests_compression
+          - j11_build
+    - start_utests_trie:
+        type: approval
+    - j11_utests_trie:
+        requires:
+          - start_utests_trie
+          - j11_build
+    - j11_utests_trie_repeat:
+        requires:
+          - start_utests_trie
           - j11_build
     - start_utests_stress:
         type: approval
@@ -1551,6 +1700,15 @@ jobs:
 
   j8_simulator_dtests:
     <<: *j8_small_executor
+    steps:
+      - attach_workspace:
+          at: /home/cassandra
+      - create_junit_containers
+      - log_environment
+      - run_simulator_tests
+
+  j11_simulator_dtests:
+    <<: *j11_small_executor
     steps:
       - attach_workspace:
           at: /home/cassandra
@@ -1717,6 +1875,26 @@ jobs:
       - log_environment
       - run_parallel_junit_tests:
           target: testclasslist-compression
+
+  j8_utests_trie:
+    <<: *j8_par_executor
+    steps:
+      - attach_workspace:
+          at: /home/cassandra
+      - create_junit_containers
+      - log_environment
+      - run_parallel_junit_tests:
+          target: testclasslist-trie
+
+  j11_utests_trie:
+    <<: *j11_par_executor
+    steps:
+      - attach_workspace:
+          at: /home/cassandra
+      - create_junit_containers
+      - log_environment
+      - run_parallel_junit_tests:
+          target: testclasslist-trie
 
   j8_utests_stress:
     <<: *j8_seq_executor
@@ -1919,6 +2097,24 @@ jobs:
           extra_env_args: 'CQLSH_PYTHON=/usr/bin/python3.8'
           python_version: '3.8'
 
+  j8_cqlsh_dtests_py311_vnode:
+    <<: *j8_par_executor
+    steps:
+      - attach_workspace:
+          at: /home/cassandra
+      - clone_dtest
+      - create_venv:
+          python_version: '3.11'
+      - create_dtest_containers:
+          file_tag: j8_with_vnodes
+          run_dtests_extra_args: "--use-vnodes --skip-resource-intensive-tests --pytest-options '-k cql'"
+          python_version: '3.11'
+      - run_dtests:
+          file_tag: j8_with_vnodes
+          pytest_extra_args: '--use-vnodes --num-tokens=16 --skip-resource-intensive-tests'
+          extra_env_args: 'CQLSH_PYTHON=/usr/bin/python3.11'
+          python_version: '3.11'
+
   j8_cqlsh_dtests_py38_offheap:
     <<: *j8_par_executor
     steps:
@@ -1936,6 +2132,24 @@ jobs:
           pytest_extra_args: '--use-vnodes --num-tokens=16 --use-off-heap-memtables --skip-resource-intensive-tests'
           extra_env_args: 'CQLSH_PYTHON=/usr/bin/python3.8'
           python_version: '3.8'
+
+  j8_cqlsh_dtests_py311_offheap:
+    <<: *j8_par_executor
+    steps:
+      - attach_workspace:
+          at: /home/cassandra
+      - clone_dtest
+      - create_venv:
+          python_version: '3.11'
+      - create_dtest_containers:
+          file_tag: j8_dtests_offheap
+          run_dtests_extra_args: "--use-vnodes --use-off-heap-memtables --skip-resource-intensive-tests --pytest-options '-k cql'"
+          python_version: '3.11'
+      - run_dtests:
+          file_tag: j8_dtests_offheap
+          pytest_extra_args: '--use-vnodes --num-tokens=16 --use-off-heap-memtables --skip-resource-intensive-tests'
+          extra_env_args: 'CQLSH_PYTHON=/usr/bin/python3.11'
+          python_version: '3.11'
 
   j8_cqlsh_dtests_py3:
     <<: *j8_par_executor
@@ -1969,6 +2183,24 @@ jobs:
           pytest_extra_args: '--skip-resource-intensive-tests'
           extra_env_args: 'CQLSH_PYTHON=/usr/bin/python3.8'
           python_version: '3.8'
+
+  j8_cqlsh_dtests_py311:
+    <<: *j8_par_executor
+    steps:
+      - attach_workspace:
+          at: /home/cassandra
+      - clone_dtest
+      - create_venv:
+          python_version: '3.11'
+      - create_dtest_containers:
+          file_tag: j8_without_vnodes
+          run_dtests_extra_args: "--skip-resource-intensive-tests --pytest-options '-k cql'"
+          python_version: '3.11'
+      - run_dtests:
+          file_tag: j8_without_vnodes
+          pytest_extra_args: '--skip-resource-intensive-tests'
+          extra_env_args: 'CQLSH_PYTHON=/usr/bin/python3.11'
+          python_version: '3.11'
 
   j11_cqlsh_dtests_py3_vnode:
     <<: *j11_par_executor
@@ -2018,6 +2250,24 @@ jobs:
           extra_env_args: 'CQLSH_PYTHON=/usr/bin/python3.8'
           python_version: '3.8'
 
+  j11_cqlsh_dtests_py311_vnode:
+    <<: *j11_par_executor
+    steps:
+      - attach_workspace:
+          at: /home/cassandra
+      - clone_dtest
+      - create_venv:
+          python_version: '3.11'
+      - create_dtest_containers:
+          file_tag: j11_with_vnodes
+          run_dtests_extra_args: "--use-vnodes --skip-resource-intensive-tests --pytest-options '-k cql'"
+          python_version: '3.11'
+      - run_dtests:
+          file_tag: j11_with_vnodes
+          pytest_extra_args: '--use-vnodes --num-tokens=16 --skip-resource-intensive-tests'
+          extra_env_args: 'CQLSH_PYTHON=/usr/bin/python3.11'
+          python_version: '3.11'
+
   j11_cqlsh_dtests_py38_offheap:
     <<: *j11_par_executor
     steps:
@@ -2035,6 +2285,24 @@ jobs:
           pytest_extra_args: '--use-vnodes --num-tokens=16 --use-off-heap-memtables --skip-resource-intensive-tests'
           extra_env_args: 'CQLSH_PYTHON=/usr/bin/python3.8'
           python_version: '3.8'
+
+  j11_cqlsh_dtests_py311_offheap:
+    <<: *j11_par_executor
+    steps:
+      - attach_workspace:
+          at: /home/cassandra
+      - clone_dtest
+      - create_venv:
+          python_version: '3.11'
+      - create_dtest_containers:
+          file_tag: j11_dtests_offheap
+          run_dtests_extra_args: "--use-vnodes --use-off-heap-memtables --skip-resource-intensive-tests --pytest-options '-k cql'"
+          python_version: '3.11'
+      - run_dtests:
+          file_tag: j11_dtests_offheap
+          pytest_extra_args: '--use-vnodes --num-tokens=16 --use-off-heap-memtables --skip-resource-intensive-tests'
+          extra_env_args: 'CQLSH_PYTHON=/usr/bin/python3.11'
+          python_version: '3.11'
 
   j11_cqlsh_dtests_py3:
     <<: *j11_par_executor
@@ -2068,6 +2336,24 @@ jobs:
           pytest_extra_args: '--skip-resource-intensive-tests'
           extra_env_args: 'CQLSH_PYTHON=/usr/bin/python3.8'
           python_version: '3.8'
+
+  j11_cqlsh_dtests_py311:
+    <<: *j11_par_executor
+    steps:
+      - attach_workspace:
+          at: /home/cassandra
+      - clone_dtest
+      - create_venv:
+          python_version: '3.11'
+      - create_dtest_containers:
+          file_tag: j11_without_vnodes
+          run_dtests_extra_args: "--skip-resource-intensive-tests --pytest-options '-k cql'"
+          python_version: '3.11'
+      - run_dtests:
+          file_tag: j11_without_vnodes
+          pytest_extra_args: '--skip-resource-intensive-tests'
+          extra_env_args: 'CQLSH_PYTHON=/usr/bin/python3.11'
+          python_version: '3.11'
 
   j8_dtests_large_vnode:
     <<: *j8_par_executor
@@ -2173,6 +2459,22 @@ jobs:
       - log_environment
       - run_utests_compression_repeat
 
+  j8_utests_trie_repeat:
+    <<: *j8_repeated_utest_executor
+    steps:
+      - attach_workspace:
+          at: /home/cassandra
+      - log_environment
+      - run_utests_trie_repeat
+
+  j11_utests_trie_repeat:
+    <<: *j11_repeated_utest_executor
+    steps:
+      - attach_workspace:
+          at: /home/cassandra
+      - log_environment
+      - run_utests_trie_repeat
+
   j8_utests_system_keyspace_directory_repeat:
     <<: *j8_repeated_utest_executor
     steps:
@@ -2255,6 +2557,14 @@ jobs:
 
   j8_simulator_dtests_repeat:
     <<: *j8_repeated_utest_executor
+    steps:
+      - attach_workspace:
+          at: /home/cassandra
+      - log_environment
+      - run_simulator_dtests_repeat
+
+  j11_simulator_dtests_repeat:
+    <<: *j11_repeated_utest_executor
     steps:
       - attach_workspace:
           at: /home/cassandra
@@ -2761,7 +3071,7 @@ commands:
       python_version:
         type: enum
         default: "3.6"
-        enum: ["3.6", "3.7", "3.8"]
+        enum: ["3.6", "3.7", "3.8", "3.11"]
     steps:
     - run:
         name: Configure virtualenv and python Dependencies
@@ -2792,7 +3102,7 @@ commands:
       python_version:
         type: enum
         default: "3.6"
-        enum: ["3.6", "3.7", "3.8"]
+        enum: ["3.6", "3.7", "3.8", "3.11"]
     steps:
     - run:
         name: Determine Tests to Run (<<parameters.file_tag>>)
@@ -2834,7 +3144,7 @@ commands:
       python_version:
         type: enum
         default: "3.6"
-        enum: ["3.6", "3.7", "3.8"]
+        enum: ["3.6", "3.7", "3.8", "3.11"]
     steps:
       - run:
           name: Run dtests (<<parameters.file_tag>>)
@@ -2893,6 +3203,14 @@ commands:
     steps:
       - run_repeated_utests:
           target: test-compression
+          tests: ${REPEATED_UTESTS}
+          count: ${REPEATED_UTESTS_COUNT}
+          stop_on_failure: ${REPEATED_TESTS_STOP_ON_FAILURE}
+
+  run_utests_trie_repeat:
+    steps:
+      - run_repeated_utests:
+          target: test-trie
           tests: ${REPEATED_UTESTS}
           count: ${REPEATED_UTESTS_COUNT}
           stop_on_failure: ${REPEATED_TESTS_STOP_ON_FAILURE}
@@ -2999,7 +3317,7 @@ commands:
             # Put manually specified tests and automatically detected tests together, removing duplicates
             tests=$(echo <<parameters.tests>> | sed -e "s/<nil>//" | sed -e "s/ //" | tr "," "\n" | tr " " "\n" | sort -n | uniq -u)
             echo "Tests to be repeated: ${tests}"
-
+            
             # Prepare the JVM dtests vnodes argument, which is optional.
             vnodes=<<parameters.vnodes>>
             vnodes_args=""
@@ -3016,6 +3334,8 @@ commands:
               testtag="compression"
             elif [[ $target == "test-system-keyspace-directory" ]]; then
               testtag="system_keyspace_directory"
+            elif [[ $target == "test-trie" ]]; then
+              testtag="trie"
             fi
 
             # Run each test class as many times as requested.
@@ -3036,6 +3356,7 @@ commands:
                 if [[ $target == "test" || \
                       $target == "test-cdc" || \
                       $target == "test-compression" || \
+                      $target == "test-trie" || \
                       $target == "test-system-keyspace-directory" || \
                       $target == "fqltool-test" || \
                       $target == "long-test" || \
@@ -3162,6 +3483,7 @@ commands:
                 if [[ $target == "test" || \
                       $target == "test-cdc" || \
                       $target == "test-compression" || \
+                      $target == "test-trie" || \
                       $target == "test-system-keyspace-directory" || \
                       $target == "fqltool-test" || \
                       $target == "long-test" || \

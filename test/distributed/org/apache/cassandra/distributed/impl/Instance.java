@@ -146,6 +146,7 @@ import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.utils.Throwables;
 import org.apache.cassandra.utils.concurrent.Ref;
+import org.apache.cassandra.utils.logging.LoggingSupportFactory;
 import org.apache.cassandra.utils.memory.BufferPools;
 import org.apache.cassandra.utils.progress.jmx.JMXBroadcastExecutor;
 
@@ -441,7 +442,7 @@ public class Instance extends IsolatedExecutor implements IInvokableInstance
         batch.id.serialize(out);
         out.writeLong(batch.creationTime);
 
-        out.writeUnsignedVInt(batch.getEncodedMutations().size());
+        out.writeUnsignedVInt32(batch.getEncodedMutations().size());
 
         for (ByteBuffer mutation : batch.getEncodedMutations())
         {
@@ -590,9 +591,12 @@ public class Instance extends IsolatedExecutor implements IInvokableInstance
                 DistributedTestSnitch.assign(config.networkTopology());
 
                 DatabaseDescriptor.daemonInitialization();
+                LoggingSupportFactory.getLoggingSupport().onStartup();
+
                 FileUtils.setFSErrorHandler(new DefaultFSErrorHandler());
                 DatabaseDescriptor.createAllDirectories();
                 CassandraDaemon.getInstanceForTesting().migrateSystemDataIfNeeded();
+                CassandraDaemon.logSystemInfo(inInstancelogger);
                 CommitLog.instance.start();
 
                 CassandraDaemon.getInstanceForTesting().runStartupChecks();
@@ -618,6 +622,9 @@ public class Instance extends IsolatedExecutor implements IInvokableInstance
 
                 // Start up virtual table support
                 CassandraDaemon.getInstanceForTesting().setupVirtualKeyspaces();
+
+                // clean up debris in data directories
+                CassandraDaemon.getInstanceForTesting().scrubDataDirectories();
 
                 Keyspace.setInitialized();
 
@@ -663,6 +670,7 @@ public class Instance extends IsolatedExecutor implements IInvokableInstance
                     propagateMessagingVersions(cluster); // fake messaging needs to know messaging version for filters
                 }
                 internodeMessagingStarted = true;
+
                 JVMStabilityInspector.replaceKiller(new InstanceKiller(Instance.this::shutdown));
 
                 // TODO: this is more than just gossip
@@ -924,9 +932,9 @@ public class Instance extends IsolatedExecutor implements IInvokableInstance
     public NodeToolResult nodetoolResult(boolean withNotifications, String... commandAndArgs)
     {
         return sync(() -> {
-            try (CapturingOutput output = new CapturingOutput())
+            try (CapturingOutput output = new CapturingOutput();
+                 DTestNodeTool nodetool = new DTestNodeTool(withNotifications, output.delegate))
             {
-                DTestNodeTool nodetool = new DTestNodeTool(withNotifications, output.delegate);
                 // install security manager to get informed about the exit-code
                 System.setSecurityManager(new SecurityManager()
                 {
@@ -1010,15 +1018,18 @@ public class Instance extends IsolatedExecutor implements IInvokableInstance
         }
     }
 
-    public static class DTestNodeTool extends NodeTool {
+    public static class DTestNodeTool extends NodeTool implements AutoCloseable
+    {
         private final StorageServiceMBean storageProxy;
         private final CollectingNotificationListener notifications = new CollectingNotificationListener();
-
+        private final InternalNodeProbe internalNodeProbe;
         private Throwable latestError;
 
-        public DTestNodeTool(boolean withNotifications, Output output) {
+        public DTestNodeTool(boolean withNotifications, Output output)
+        {
             super(new InternalNodeProbeFactory(withNotifications), output);
-            storageProxy = new InternalNodeProbe(withNotifications).getStorageService();
+            internalNodeProbe = new InternalNodeProbe(withNotifications);
+            storageProxy = internalNodeProbe.getStorageService();
             storageProxy.addNotificationListener(notifications, null, null);
         }
 
@@ -1063,6 +1074,12 @@ public class Instance extends IsolatedExecutor implements IInvokableInstance
                 return;
             super.err(e);
             latestError = e;
+        }
+
+        @Override
+        public void close()
+        {
+            internalNodeProbe.close();
         }
     }
 

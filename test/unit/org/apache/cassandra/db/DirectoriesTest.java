@@ -18,8 +18,11 @@
 package org.apache.cassandra.db;
 
 import java.io.IOException;
+import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileAttributeView;
+import java.nio.file.attribute.FileStoreAttributeView;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -36,6 +39,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -97,6 +101,7 @@ public class DirectoriesTest
     public static final String TABLE_NAME = "FakeTable";
     public static final String SNAPSHOT1 = "snapshot1";
     public static final String SNAPSHOT2 = "snapshot2";
+    public static final String SNAPSHOT3 = "snapshot3";
 
     public static final String LEGACY_SNAPSHOT_NAME = "42";
     private static File tempDataDir;
@@ -105,7 +110,7 @@ public class DirectoriesTest
     private static Set<TableMetadata> CFM;
     private static Map<String, List<File>> sstablesByTableName;
 
-    @Parameterized.Parameter(0)
+    @Parameterized.Parameter
     public SSTableId.Builder<? extends SSTableId> idBuilder;
 
     @Parameterized.Parameter(1)
@@ -151,7 +156,7 @@ public class DirectoriesTest
     @AfterClass
     public static void afterClass()
     {
-        FileUtils.deleteRecursive(tempDataDir);
+        tempDataDir.deleteRecursive();
     }
 
     private static DataDirectory[] toDataDirectories(File location)
@@ -159,7 +164,7 @@ public class DirectoriesTest
         return new DataDirectory[] { new DataDirectory(location) };
     }
 
-    private void createTestFiles() throws IOException
+    private void createTestFiles()
     {
         for (TableMetadata cfm : CFM)
         {
@@ -181,25 +186,27 @@ public class DirectoriesTest
         }
     }
 
-    class FakeSnapshot {
+    static class FakeSnapshot {
         final TableMetadata table;
         final String tag;
         final File snapshotDir;
         final SnapshotManifest manifest;
+        final boolean ephemeral;
 
-        FakeSnapshot(TableMetadata table, String tag, File snapshotDir, SnapshotManifest manifest)
+        FakeSnapshot(TableMetadata table, String tag, File snapshotDir, SnapshotManifest manifest, boolean ephemeral)
         {
             this.table = table;
             this.tag = tag;
             this.snapshotDir = snapshotDir;
             this.manifest = manifest;
+            this.ephemeral = ephemeral;
         }
 
         public TableSnapshot asTableSnapshot()
         {
             Instant createdAt = manifest == null ? null : manifest.createdAt;
             Instant expiresAt = manifest == null ? null : manifest.expiresAt;
-            return new TableSnapshot(table.keyspace, table.name, table.id.asUUID(), tag, createdAt, expiresAt, Collections.singleton(snapshotDir));
+            return new TableSnapshot(table.keyspace, table.name, table.id.asUUID(), tag, createdAt, expiresAt, Collections.singleton(snapshotDir), ephemeral);
         }
     }
 
@@ -211,7 +218,7 @@ public class DirectoriesTest
                             .build();
     }
 
-    public FakeSnapshot createFakeSnapshot(TableMetadata table, String tag, boolean createManifest) throws IOException
+    public FakeSnapshot createFakeSnapshot(TableMetadata table, String tag, boolean createManifest, boolean ephemeral) throws IOException
     {
         File tableDir = cfDir(table);
         tableDir.tryCreateDirectories();
@@ -225,11 +232,15 @@ public class DirectoriesTest
         if (createManifest)
         {
             File manifestFile = Directories.getSnapshotManifestFile(snapshotDir);
-            manifest = new SnapshotManifest(Collections.singletonList(sstableDesc.filenameFor(Component.DATA)), new DurationSpec.IntSecondsBound("1m"), now());
+            manifest = new SnapshotManifest(Collections.singletonList(sstableDesc.filenameFor(Component.DATA)), new DurationSpec.IntSecondsBound("1m"), now(), ephemeral);
             manifest.serializeToJsonFile(manifestFile);
         }
+        else if (ephemeral)
+        {
+            Files.createFile(snapshotDir.toPath().resolve("ephemeral.snapshot"));
+        }
 
-        return new FakeSnapshot(table, tag, snapshotDir, manifest);
+        return new FakeSnapshot(table, tag, snapshotDir, manifest, ephemeral);
     }
 
     private List<File> createFakeSSTable(File dir, String cf, int gen)
@@ -269,7 +280,7 @@ public class DirectoriesTest
     }
 
     @Test
-    public void testStandardDirs() throws IOException
+    public void testStandardDirs()
     {
         for (TableMetadata cfm : CFM)
         {
@@ -296,22 +307,27 @@ public class DirectoriesTest
         assertThat(directories.listSnapshots()).isEmpty();
 
         // Create snapshot with and without manifest
-        FakeSnapshot snapshot1 = createFakeSnapshot(fakeTable, SNAPSHOT1, true);
-        FakeSnapshot snapshot2 = createFakeSnapshot(fakeTable, SNAPSHOT2, false);
+        FakeSnapshot snapshot1 = createFakeSnapshot(fakeTable, SNAPSHOT1, true, false);
+        FakeSnapshot snapshot2 = createFakeSnapshot(fakeTable, SNAPSHOT2, false, false);
+        // ephemeral without manifst
+        FakeSnapshot snapshot3 = createFakeSnapshot(fakeTable, SNAPSHOT3, false, true);
 
         // Both snapshots should be present
         Map<String, TableSnapshot> snapshots = directories.listSnapshots();
-        assertThat(snapshots.keySet()).isEqualTo(Sets.newHashSet(SNAPSHOT1, SNAPSHOT2));
+        assertThat(snapshots.keySet()).isEqualTo(Sets.newHashSet(SNAPSHOT1, SNAPSHOT2, SNAPSHOT3));
         assertThat(snapshots.get(SNAPSHOT1)).isEqualTo(snapshot1.asTableSnapshot());
         assertThat(snapshots.get(SNAPSHOT2)).isEqualTo(snapshot2.asTableSnapshot());
+        assertThat(snapshots.get(SNAPSHOT3)).isEqualTo(snapshot3.asTableSnapshot());
 
         // Now remove snapshot1
-        FileUtils.deleteRecursive(snapshot1.snapshotDir);
+        snapshot1.snapshotDir.deleteRecursive();
 
-        // Only snapshot 2 should be present
+        // Only snapshot 2 and 3 should be present
         snapshots = directories.listSnapshots();
-        assertThat(snapshots.keySet()).isEqualTo(Sets.newHashSet(SNAPSHOT2));
+        assertThat(snapshots.keySet()).isEqualTo(Sets.newHashSet(SNAPSHOT2, SNAPSHOT3));
         assertThat(snapshots.get(SNAPSHOT2)).isEqualTo(snapshot2.asTableSnapshot());
+        assertThat(snapshots.get(SNAPSHOT3)).isEqualTo(snapshot3.asTableSnapshot());
+        assertThat(snapshots.get(SNAPSHOT3).isEphemeral()).isTrue();
     }
 
     @Test
@@ -322,21 +338,23 @@ public class DirectoriesTest
         assertThat(directories.listSnapshotDirsByTag()).isEmpty();
 
         // Create snapshot with and without manifest
-        FakeSnapshot snapshot1 = createFakeSnapshot(fakeTable, SNAPSHOT1, true);
-        FakeSnapshot snapshot2 = createFakeSnapshot(fakeTable, SNAPSHOT2, false);
+        FakeSnapshot snapshot1 = createFakeSnapshot(fakeTable, SNAPSHOT1, true, false);
+        FakeSnapshot snapshot2 = createFakeSnapshot(fakeTable, SNAPSHOT2, false, false);
+        FakeSnapshot snapshot3 = createFakeSnapshot(fakeTable, SNAPSHOT3, false, true);
 
         // Both snapshots should be present
         Map<String, Set<File>> snapshotDirs = directories.listSnapshotDirsByTag();
-        assertThat(snapshotDirs.keySet()).isEqualTo(Sets.newHashSet(SNAPSHOT1, SNAPSHOT2));
+        assertThat(snapshotDirs.keySet()).isEqualTo(Sets.newHashSet(SNAPSHOT1, SNAPSHOT2, SNAPSHOT3));
         assertThat(snapshotDirs.get(SNAPSHOT1)).allMatch(snapshotDir -> snapshotDir.equals(snapshot1.snapshotDir));
         assertThat(snapshotDirs.get(SNAPSHOT2)).allMatch(snapshotDir -> snapshotDir.equals(snapshot2.snapshotDir));
+        assertThat(snapshotDirs.get(SNAPSHOT3)).allMatch(snapshotDir -> snapshotDir.equals(snapshot3.snapshotDir));
 
         // Now remove snapshot1
-        FileUtils.deleteRecursive(snapshot1.snapshotDir);
+        snapshot1.snapshotDir.deleteRecursive();
 
-        // Only snapshot 2 should be present
+        // Only snapshot 2 and 3 should be present
         snapshotDirs = directories.listSnapshotDirsByTag();
-        assertThat(snapshotDirs.keySet()).isEqualTo(Sets.newHashSet(SNAPSHOT2));
+        assertThat(snapshotDirs.keySet()).isEqualTo(Sets.newHashSet(SNAPSHOT2, SNAPSHOT3));
     }
 
     @Test
@@ -353,7 +371,7 @@ public class DirectoriesTest
 
             File manifestFile = directories.getSnapshotManifestFile(tag);
 
-            SnapshotManifest manifest = new SnapshotManifest(files, new DurationSpec.IntSecondsBound("1m"), now());
+            SnapshotManifest manifest = new SnapshotManifest(files, new DurationSpec.IntSecondsBound("1m"), now(), false);
             manifest.serializeToJsonFile(manifestFile);
 
             Set<File> dirs = new HashSet<>();
@@ -488,7 +506,7 @@ public class DirectoriesTest
     }
 
     @Test
-    public void testTemporaryFile() throws IOException
+    public void testTemporaryFile()
     {
         for (TableMetadata cfm : CFM)
         {
@@ -552,11 +570,10 @@ public class DirectoriesTest
             final Directories directories = new Directories(cfm, toDataDirectories(tempDataDir));
             assertEquals(cfDir(cfm), directories.getDirectoryForNewSSTables());
             final String n = Long.toString(nanoTime());
-            Callable<File> directoryGetter = new Callable<File>() {
-                public File call() throws Exception {
-                    Descriptor desc = new Descriptor(cfDir(cfm), KS, cfm.name, sstableId(1), SSTableFormat.Type.BIG);
-                    return Directories.getSnapshotDirectory(desc, n);
-                }
+            Callable<File> directoryGetter = () ->
+            {
+                Descriptor desc = new Descriptor(cfDir(cfm), KS, cfm.name, sstableId(1), SSTableFormat.Type.BIG);
+                return Directories.getSnapshotDirectory(desc, n);
             };
             List<Future<File>> invoked = Executors.newFixedThreadPool(2).invokeAll(Arrays.asList(directoryGetter, directoryGetter));
             for(Future<File> fut:invoked) {
@@ -852,6 +869,125 @@ public class DirectoriesTest
         assertFalse(iter.hasNext());
     }
 
+    @Test
+    public void testFreeCompactionSpace()
+    {
+        double oldMaxSpaceForCompactions = DatabaseDescriptor.getMaxSpaceForCompactionsPerDrive();
+        long oldFreeSpace = DatabaseDescriptor.getMinFreeSpacePerDriveInMebibytes();
+        DatabaseDescriptor.setMaxSpaceForCompactionsPerDrive(100.0);
+        DatabaseDescriptor.setMinFreeSpacePerDriveInMebibytes(0);
+        FileStore fstore = new FakeFileStore();
+        try
+        {
+            DatabaseDescriptor.setMaxSpaceForCompactionsPerDrive(1);
+            assertEquals(100, Directories.getAvailableSpaceForCompactions(fstore));
+            DatabaseDescriptor.setMaxSpaceForCompactionsPerDrive(.5);
+            assertEquals(50, Directories.getAvailableSpaceForCompactions(fstore));
+            DatabaseDescriptor.setMaxSpaceForCompactionsPerDrive(0);
+            assertEquals(0, Directories.getAvailableSpaceForCompactions(fstore));
+        }
+        finally
+        {
+            DatabaseDescriptor.setMaxSpaceForCompactionsPerDrive(oldMaxSpaceForCompactions);
+            DatabaseDescriptor.setMinFreeSpacePerDriveInMebibytes(oldFreeSpace / FileUtils.ONE_MIB);
+        }
+    }
+
+    @Test
+    public void testHasAvailableSpace()
+    {
+        double oldMaxSpaceForCompactions = DatabaseDescriptor.getMaxSpaceForCompactionsPerDrive();
+        long oldFreeSpace = DatabaseDescriptor.getMinFreeSpacePerDriveInMebibytes();
+        DatabaseDescriptor.setMaxSpaceForCompactionsPerDrive(1.0);
+        DatabaseDescriptor.setMinFreeSpacePerDriveInMebibytes(0);
+        try
+        {
+            FakeFileStore fs1 = new FakeFileStore();
+            FakeFileStore fs2 = new FakeFileStore();
+            FakeFileStore fs3 = new FakeFileStore();
+            Map<FileStore, Long> writes = new HashMap<>();
+
+            fs1.usableSpace = 30;
+            fs2.usableSpace = 30;
+            fs3.usableSpace = 30;
+
+            writes.put(fs1, 20L);
+            writes.put(fs2, 20L);
+            writes.put(fs3, 20L);
+            assertTrue(Directories.hasDiskSpaceForCompactionsAndStreams(writes));
+
+            fs1.usableSpace = 19;
+            assertFalse(Directories.hasDiskSpaceForCompactionsAndStreams(writes));
+        }
+        finally
+        {
+            DatabaseDescriptor.setMaxSpaceForCompactionsPerDrive(oldMaxSpaceForCompactions);
+            DatabaseDescriptor.setMinFreeSpacePerDriveInMebibytes(oldFreeSpace);
+        }
+    }
+
+    @Test
+    public void testHasAvailableSpaceSumming()
+    {
+        double oldMaxSpaceForCompactions = DatabaseDescriptor.getMaxSpaceForCompactionsPerDrive();
+        long oldFreeSpace = DatabaseDescriptor.getMinFreeSpacePerDriveInMebibytes();
+        DatabaseDescriptor.setMaxSpaceForCompactionsPerDrive(1.0);
+        DatabaseDescriptor.setMinFreeSpacePerDriveInMebibytes(0);
+        try
+        {
+            FakeFileStore fs1 = new FakeFileStore();
+            FakeFileStore fs2 = new FakeFileStore();
+            Map<File, Long> expectedNewWriteSizes = new HashMap<>();
+            Map<File, Long> totalCompactionWriteRemaining = new HashMap<>();
+
+            fs1.usableSpace = 100;
+            fs2.usableSpace = 100;
+
+            File f1 = new File("f1");
+            File f2 = new File("f2");
+            File f3 = new File("f3");
+
+            expectedNewWriteSizes.put(f1, 20L);
+            expectedNewWriteSizes.put(f2, 20L);
+            expectedNewWriteSizes.put(f3, 20L);
+
+            totalCompactionWriteRemaining.put(f1, 20L);
+            totalCompactionWriteRemaining.put(f2, 20L);
+            totalCompactionWriteRemaining.put(f3, 20L);
+            Function<File, FileStore> filestoreMapper = (f) -> {
+                if (f == f1 || f == f2)
+                    return fs1;
+                return fs2;
+            };
+            assertTrue(Directories.hasDiskSpaceForCompactionsAndStreams(expectedNewWriteSizes, totalCompactionWriteRemaining, filestoreMapper));
+            fs1.usableSpace = 79;
+            assertFalse(Directories.hasDiskSpaceForCompactionsAndStreams(expectedNewWriteSizes, totalCompactionWriteRemaining, filestoreMapper));
+            fs1.usableSpace = 81;
+            assertTrue(Directories.hasDiskSpaceForCompactionsAndStreams(expectedNewWriteSizes, totalCompactionWriteRemaining, filestoreMapper));
+
+            expectedNewWriteSizes.clear();
+            expectedNewWriteSizes.put(f1, 100L);
+            totalCompactionWriteRemaining.clear();
+            totalCompactionWriteRemaining.put(f2, 100L);
+            fs1.usableSpace = 150;
+
+            assertFalse(Directories.hasDiskSpaceForCompactionsAndStreams(expectedNewWriteSizes, totalCompactionWriteRemaining, filestoreMapper));
+            expectedNewWriteSizes.clear();
+            expectedNewWriteSizes.put(f1, 100L);
+            totalCompactionWriteRemaining.clear();
+            totalCompactionWriteRemaining.put(f3, 500L);
+            fs1.usableSpace = 150;
+            fs2.usableSpace = 400; // too little space for the ongoing compaction, but this filestore does not affect the new compaction so it should be allowed
+
+            assertTrue(Directories.hasDiskSpaceForCompactionsAndStreams(expectedNewWriteSizes, totalCompactionWriteRemaining, filestoreMapper));
+        }
+        finally
+        {
+            DatabaseDescriptor.setMaxSpaceForCompactionsPerDrive(oldMaxSpaceForCompactions);
+            DatabaseDescriptor.setMinFreeSpacePerDriveInMebibytes(oldFreeSpace / FileUtils.ONE_MIB);
+        }
+    }
+
     private String getNewFilename(TableMetadata tm, boolean oldStyle)
     {
         return tm.keyspace + File.pathSeparator() + tm.name + (oldStyle ? "" : Component.separator + tm.id.toHexString()) + "/na-1-big-Data.db";
@@ -877,5 +1013,23 @@ public class DirectoriesTest
         Directories.sortWriteableCandidates(candidates, totalAvailable);
 
         return candidates;
+    }
+
+    private static class FakeFileStore extends FileStore
+    {
+        public long usableSpace = 100;
+        public long getUsableSpace()
+        {
+            return usableSpace;
+        }
+        public String name() {return null;}
+        public String type() {return null;}
+        public boolean isReadOnly() {return false;}
+        public long getTotalSpace() {return 0;}
+        public long getUnallocatedSpace() {return 0;}
+        public boolean supportsFileAttributeView(Class<? extends FileAttributeView> type) {return false;}
+        public boolean supportsFileAttributeView(String name) {return false;}
+        public <V extends FileStoreAttributeView> V getFileStoreAttributeView(Class<V> type) {return null;}
+        public Object getAttribute(String attribute) {return null;}
     }
 }

@@ -338,7 +338,7 @@ public class ByteBufferUtil
 
     public static void writeWithVIntLength(ByteBuffer bytes, DataOutputPlus out) throws IOException
     {
-        out.writeUnsignedVInt(bytes.remaining());
+        out.writeUnsignedVInt32(bytes.remaining());
         out.write(bytes);
     }
 
@@ -364,7 +364,7 @@ public class ByteBufferUtil
 
     public static ByteBuffer readWithVIntLength(DataInputPlus in) throws IOException
     {
-        int length = (int)in.readUnsignedVInt();
+        int length = in.readUnsignedVInt32();
         if (length < 0)
             throw new IOException("Corrupt (negative) value length encountered");
 
@@ -385,7 +385,7 @@ public class ByteBufferUtil
 
     public static void skipWithVIntLength(DataInputPlus in) throws IOException
     {
-        int length = (int)in.readUnsignedVInt();
+        int length = in.readUnsignedVInt32();
         if (length < 0)
             throw new IOException("Corrupt (negative) value length encountered");
 
@@ -681,13 +681,14 @@ public class ByteBufferUtil
 
     public static boolean canMinimize(ByteBuffer buf)
     {
-        return buf != null && (buf.capacity() > buf.remaining() || !buf.hasArray());
+        return buf != null && (!buf.hasArray() || buf.array().length > buf.remaining());
+        // Note: buf.array().length is different from buf.capacity() for sliced buffers.
     }
 
     /** trims size of bytebuffer to exactly number of bytes in it, to do not hold too much memory */
     public static ByteBuffer minimalBufferFor(ByteBuffer buf)
     {
-        return buf.capacity() > buf.remaining() || !buf.hasArray() ? ByteBuffer.wrap(getArray(buf)) : buf;
+        return !buf.hasArray() || buf.array().length > buf.remaining() ? ByteBuffer.wrap(getArray(buf)) : buf;
     }
 
     public static ByteBuffer[] minimizeBuffers(ByteBuffer[] src)

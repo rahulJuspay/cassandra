@@ -38,7 +38,6 @@ import org.apache.cassandra.distributed.api.IIsolatedExecutor;
 import org.apache.cassandra.distributed.api.SimpleQueryResult;
 import org.apache.cassandra.distributed.api.TokenSupplier;
 import org.apache.cassandra.distributed.shared.ClusterUtils;
-import org.apache.cassandra.distributed.util.QueryResultUtil;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.Throwables;
 
@@ -158,12 +157,8 @@ public class AlterTest extends TestBaseImpl
             cluster.schemaChange("ALTER TABLE " + KEYSPACE + ".tbl WITH memtable = 'testconfig'", false, node1);
             // the above should succeed, the configuration is acceptable to node1
 
-            final String schema1 = QueryResultUtil.expand(node1.executeInternalWithResult("SELECT * FROM system_schema.tables WHERE keyspace_name=?", KEYSPACE));
-            final String schema2 = QueryResultUtil.expand(node2.executeInternalWithResult("SELECT * FROM system_schema.tables WHERE keyspace_name=?", KEYSPACE));
-            logger.info("node1 schema: \n{}", schema1);
-            logger.info("node2 schema: \n{}", schema2);
-            Assert.assertEquals(schema1, schema2);
-            List<String> errorInLog = node2.logs().grep(mark, "ERROR.*Invalid memtable configuration.*").getResult();
+            ClusterUtils.awaitGossipSchemaMatch(cluster);
+            List<String> errorInLog = node2.logs().grep(mark,"ERROR.*Invalid memtable configuration.*").getResult();
             Assert.assertTrue(errorInLog.size() > 0);
             logger.info(Lists.listToString(errorInLog));
 
@@ -175,9 +170,7 @@ public class AlterTest extends TestBaseImpl
                                                                     "testconfig", ImmutableMap.of(
                                                                         "class_name", "NotExistingMemtable")))));
             node3.startup(cluster);
-            final String schema3 = QueryResultUtil.expand(node3.executeInternalWithResult("SELECT * FROM system_schema.tables WHERE keyspace_name=?", KEYSPACE));
-            logger.info("node3 schema: \n{}", schema3);
-            Assert.assertEquals(schema1, schema3);
+            ClusterUtils.awaitGossipSchemaMatch(cluster);
 
             errorInLog = node3.logs().grep("ERROR.*Invalid memtable configuration.*").getResult();
             Assert.assertTrue(errorInLog.size() > 0);

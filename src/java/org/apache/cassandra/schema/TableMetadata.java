@@ -263,6 +263,11 @@ public class TableMetadata implements SchemaElement
     {
         return false;
     }
+    
+    public boolean isIncrementalBackupsEnabled()
+    {
+        return params.incrementalBackups;
+    }
 
     public boolean isStaticCompactTable()
     {
@@ -774,6 +779,12 @@ public class TableMetadata implements SchemaElement
         public Builder params(TableParams val)
         {
             params = val.unbuild();
+            return this;
+        }
+
+        public Builder allowAutoSnapshot(boolean val)
+        {
+            params.allowAutoSnapshot(val);
             return this;
         }
 

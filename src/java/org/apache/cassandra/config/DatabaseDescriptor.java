@@ -18,6 +18,8 @@
 package org.apache.cassandra.config;
 
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.RuntimeMXBean;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
@@ -25,6 +27,8 @@ import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.file.FileStore;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -32,11 +36,13 @@ import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 import javax.annotation.Nullable;
 
@@ -906,6 +912,12 @@ public class DatabaseDescriptor
             conf.paxos_state_purging = PaxosStatePurging.legacy;
 
         logInitializationOutcome(logger);
+
+        if (conf.max_space_usable_for_compactions_in_percentage < 0 || conf.max_space_usable_for_compactions_in_percentage > 1)
+            throw new ConfigurationException("max_space_usable_for_compactions_in_percentage must be between 0 and 1", false);
+
+        if (conf.dump_heap_on_uncaught_exception && DatabaseDescriptor.getHeapDumpPath() == null)
+            throw new ConfigurationException(String.format("Invalid configuration. Heap dump is enabled but cannot create heap dump output path: %s.", conf.heap_dump_path != null ? conf.heap_dump_path : "null"));
     }
 
     @VisibleForTesting
@@ -1582,6 +1594,13 @@ public class DatabaseDescriptor
                     throw new ConfigurationException("cdc_raw_directory must be specified", false);
                 FileUtils.createDirectory(conf.cdc_raw_directory);
             }
+
+            boolean created = maybeCreateHeapDumpPath();
+            if (!created && conf.dump_heap_on_uncaught_exception)
+            {
+                logger.error(String.format("cassandra.yaml:dump_heap_on_uncaught_exception is enabled but unable to create heap dump path %s. Disabling.", conf.heap_dump_path != null ? conf.heap_dump_path : "null"));
+                conf.dump_heap_on_uncaught_exception = false;
+            }
         }
         catch (ConfigurationException e)
         {
@@ -2033,6 +2052,11 @@ public class DatabaseDescriptor
         return conf.concurrent_validations;
     }
 
+    public static int getConcurrentIndexBuilders()
+    {
+        return conf.concurrent_index_builders;
+    }
+
     public static void setConcurrentValidations(int value)
     {
         value = value > 0 ? value : Integer.MAX_VALUE;
@@ -2049,9 +2073,31 @@ public class DatabaseDescriptor
         conf.concurrent_materialized_view_builders = value;
     }
 
+    public static long getMinFreeSpacePerDriveInMebibytes()
+    {
+        return conf.min_free_space_per_drive.toMebibytes();
+    }
+
     public static long getMinFreeSpacePerDriveInBytes()
     {
         return conf.min_free_space_per_drive.toBytesInLong();
+    }
+
+    @VisibleForTesting
+    public static long setMinFreeSpacePerDriveInMebibytes(long mebiBytes)
+    {
+        conf.min_free_space_per_drive = new DataStorageSpec.IntMebibytesBound(mebiBytes);
+        return getMinFreeSpacePerDriveInBytes();
+    }
+
+    public static double getMaxSpaceForCompactionsPerDrive()
+    {
+        return conf.max_space_usable_for_compactions_in_percentage;
+    }
+
+    public static void setMaxSpaceForCompactionsPerDrive(double percentage)
+    {
+        conf.max_space_usable_for_compactions_in_percentage = percentage;
     }
 
     public static boolean getDisableSTCSInL0()
@@ -2576,6 +2622,22 @@ public class DatabaseDescriptor
     public static void setNativeTransportMaxThreads(int max_threads)
     {
         conf.native_transport_max_threads = max_threads;
+    }
+
+    public static Integer getNativeTransportMaxAuthThreads()
+    {
+        return conf.native_transport_max_auth_threads;
+    }
+
+    /**
+     * If this value is set to <= 0 it will move auth requests to the standard request pool regardless of the current
+     * size of the {@link org.apache.cassandra.transport.Dispatcher#authExecutor}'s active size.
+     *
+     * see {@link org.apache.cassandra.transport.Dispatcher#dispatch} for executor selection
+     */
+    public static void setNativeTransportMaxAuthThreads(int threads)
+    {
+        conf.native_transport_max_auth_threads = threads;
     }
 
     public static int getNativeTransportMaxFrameSize()
@@ -3120,6 +3182,16 @@ public class DatabaseDescriptor
         conf.auto_hints_cleanup_enabled = value;
     }
 
+    public static boolean getTransferHintsOnDecommission()
+    {
+        return conf.transfer_hints_on_decommission;
+    }
+
+    public static void setTransferHintsOnDecommission(boolean enabled)
+    {
+        conf.transfer_hints_on_decommission = enabled;
+    }
+
     public static boolean isIncrementalBackupsEnabled()
     {
         return conf.incremental_backups;
@@ -3342,6 +3414,16 @@ public class DatabaseDescriptor
     public static boolean streamEntireSSTables()
     {
         return conf.stream_entire_sstables;
+    }
+
+    public static boolean getSkipStreamDiskSpaceCheck()
+    {
+        return conf.skip_stream_disk_space_check;
+    }
+
+    public static void setSkipStreamDiskSpaceCheck(boolean value)
+    {
+        conf.skip_stream_disk_space_check = value;
     }
 
     public static String getLocalDataCenter()
@@ -3632,6 +3714,16 @@ public class DatabaseDescriptor
     public static void setCDCBlockWrites(boolean val)
     {
         conf.cdc_block_writes = val;
+    }
+
+    public static boolean isCDCOnRepairEnabled()
+    {
+        return conf.cdc_on_repair_enabled;
+    }
+
+    public static void setCDCOnRepairEnabled(boolean val)
+    {
+        conf.cdc_on_repair_enabled = val;
     }
 
     public static String getCDCLogLocation()
@@ -4234,6 +4326,11 @@ public class DatabaseDescriptor
             throw new IllegalArgumentException(String.format("default_keyspace_rf to be set (%d) cannot be less than minimum_replication_factor_fail_threshold (%d)", value, guardrails.getMinimumReplicationFactorFailThreshold()));
         }
 
+        if (guardrails.getMaximumReplicationFactorFailThreshold() != -1 && value > guardrails.getMaximumReplicationFactorFailThreshold())
+        {
+            throw new IllegalArgumentException(String.format("default_keyspace_rf to be set (%d) cannot be greater than maximum_replication_factor_fail_threshold (%d)", value, guardrails.getMaximumReplicationFactorFailThreshold()));
+        }
+
         conf.default_keyspace_rf = value;
     }
 
@@ -4291,6 +4388,33 @@ public class DatabaseDescriptor
         {
             logger.info("Setting streaming_state_size to {}", duration);
             conf.streaming_state_size = duration;
+        }
+    }
+
+    public static boolean getStreamingStatsEnabled()
+    {
+        return conf.streaming_stats_enabled;
+    }
+
+    public static void setStreamingStatsEnabled(boolean streamingStatsEnabled)
+    {
+        if (conf.streaming_stats_enabled != streamingStatsEnabled)
+        {
+            logger.info("Setting streaming_stats_enabled to {}", streamingStatsEnabled);
+            conf.streaming_stats_enabled = streamingStatsEnabled;
+        }
+    }
+
+    public static DurationSpec.IntSecondsBound getStreamingSlowEventsLogTimeout() {
+        return conf.streaming_slow_events_log_timeout;
+    }
+
+    public static void setStreamingSlowEventsLogTimeout(String value) {
+        DurationSpec.IntSecondsBound next = new DurationSpec.IntSecondsBound(value);
+        if (!conf.streaming_slow_events_log_timeout.equals(next))
+        {
+            logger.info("Setting streaming_slow_events_log to " + value);
+            conf.streaming_slow_events_log_timeout = next;
         }
     }
 
@@ -4370,5 +4494,92 @@ public class DatabaseDescriptor
     public static void setMinTrackedPartitionTombstoneCount(long value)
     {
         conf.min_tracked_partition_tombstone_count = value;
+    }
+
+    public static boolean getDumpHeapOnUncaughtException()
+    {
+        return conf.dump_heap_on_uncaught_exception;
+    }
+
+    /**
+     * @return Whether the path exists (be it created now or already prior)
+     */
+    private static boolean maybeCreateHeapDumpPath()
+    {
+        if (!conf.dump_heap_on_uncaught_exception)
+            return false;
+
+        Path heap_dump_path = getHeapDumpPath();
+        if (heap_dump_path == null)
+        {
+            logger.warn("Neither -XX:HeapDumpPath nor cassandra.yaml:heap_dump_path are set; unable to create a directory to hold the output.");
+            return false;
+        }
+        if (PathUtils.exists(Paths.get(conf.heap_dump_path)))
+            return true;
+        return PathUtils.createDirectoryIfNotExists(Paths.get(conf.heap_dump_path));
+    }
+
+    /**
+     * As this is at its heart a debug operation (getting a one-shot heapdump from an uncaught exception), we support
+     * both the more evolved cassandra.yaml approach but also the -XX param to override it on a one-off basis so you don't
+     * have to change the full config of a node or a cluster in order to get a heap dump from a single node that's
+     * misbehaving.
+     * @return the absolute path of the -XX param if provided, else the heap_dump_path in cassandra.yaml
+     */
+    public static Path getHeapDumpPath()
+    {
+        RuntimeMXBean runtimeMxBean = ManagementFactory.getRuntimeMXBean();
+        Optional<String> pathArg = runtimeMxBean.getInputArguments().stream().filter(s -> s.startsWith("-XX:HeapDumpPath=")).findFirst();
+
+        if (pathArg.isPresent())
+        {
+            Pattern HEAP_DUMP_PATH_SPLITTER = Pattern.compile("HeapDumpPath=");
+            String fullHeapPathString = HEAP_DUMP_PATH_SPLITTER.split(pathArg.get())[1];
+            Path absolutePath = Paths.get(fullHeapPathString).toAbsolutePath();
+            Path basePath = fullHeapPathString.endsWith(".hprof") ? absolutePath.subpath(0, absolutePath.getNameCount() - 1) : absolutePath;
+            return Paths.get("/").resolve(basePath);
+        }
+        if (conf.heap_dump_path == null)
+            throw new ConfigurationException("Attempted to get heap dump path without -XX:HeapDumpPath or cassandra.yaml:heap_dump_path set.");
+        return Paths.get(conf.heap_dump_path);
+    }
+
+    public static void setDumpHeapOnUncaughtException(boolean enabled)
+    {
+        conf.dump_heap_on_uncaught_exception = enabled;
+        boolean pathExists = maybeCreateHeapDumpPath();
+
+        if (enabled && !pathExists)
+        {
+            logger.error("Attempted to enable heap dump but cannot create the requested path. Disabling.");
+            conf.dump_heap_on_uncaught_exception = false;
+        }
+        else
+            logger.info("Setting dump_heap_on_uncaught_exception to {}", enabled);
+    }
+
+    public static boolean getSStableReadRatePersistenceEnabled()
+    {
+        return conf.sstable_read_rate_persistence_enabled;
+    }
+
+    public static void setSStableReadRatePersistenceEnabled(boolean enabled)
+    {
+        if (enabled != conf.sstable_read_rate_persistence_enabled)
+        {
+            logger.info("Setting sstable_read_rate_persistence_enabled to {}", enabled);
+            conf.sstable_read_rate_persistence_enabled = enabled;
+        }
+    }
+
+    public static boolean getClientRequestSizeMetricsEnabled()
+    {
+        return conf.client_request_size_metrics_enabled;
+    }
+
+    public static void setClientRequestSizeMetricsEnabled(boolean enabled)
+    {
+        conf.client_request_size_metrics_enabled = enabled;
     }
 }

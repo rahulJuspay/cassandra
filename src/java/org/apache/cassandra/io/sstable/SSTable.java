@@ -217,6 +217,28 @@ public abstract class SSTable
     }
 
     /**
+     * Parse a sstable filename into both a {@link Descriptor} and {@code Component} object.
+     *
+     * @param file     the filename to parse.
+     * @param keyspace The keyspace name of the file.
+     * @param table    The table name of the file.
+     * @return a pair of the {@code Descriptor} and {@code Component} corresponding to {@code file} if it corresponds to
+     * a valid and supported sstable filename, {@code null} otherwise. Note that components of an unknown type will be
+     * returned as CUSTOM ones.
+     */
+    public static Pair<Descriptor, Component> tryComponentFromFilename(File file, String keyspace, String table)
+    {
+        try
+        {
+            return Descriptor.fromFilenameWithComponent(file, keyspace, table);
+        }
+        catch (Throwable e)
+        {
+            return null;
+        }
+    }
+
+    /**
      * Parse a sstable filename into a {@link Descriptor} object.
      * <p>
      * Note that this method ignores the component part of the filename; if this is not what you want, use
@@ -296,16 +318,6 @@ public abstract class SSTable
         long estimatedRows = ifile.length() / (ifile.getFilePointer() / keys);
         ifile.seek(0);
         return estimatedRows;
-    }
-
-    public long bytesOnDisk()
-    {
-        long bytes = 0;
-        for (Component component : components)
-        {
-            bytes += new File(descriptor.filenameFor(component)).length();
-        }
-        return bytes;
     }
 
     @Override

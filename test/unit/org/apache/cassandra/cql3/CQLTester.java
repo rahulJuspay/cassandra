@@ -58,6 +58,7 @@ import com.datastax.driver.core.DataType;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.exceptions.UnauthorizedException;
 
+import com.datastax.shaded.netty.channel.EventLoopGroup;
 import org.apache.cassandra.SchemaLoader;
 import org.apache.cassandra.ServerTestUtils;
 import org.apache.cassandra.Util;
@@ -161,6 +162,16 @@ public abstract class CQLTester
                                                                    "(\\((?:\\s*\\w+\\s*\\()?%<s\\))?",
                                                                    CREATE_INDEX_NAME_REGEX);
     private static final Pattern CREATE_INDEX_PATTERN = Pattern.compile(CREATE_INDEX_REGEX, Pattern.CASE_INSENSITIVE);
+
+    public static final NettyOptions IMMEDIATE_CONNECTION_SHUTDOWN_NETTY_OPTIONS = new NettyOptions()
+    {
+        @Override
+        public void onClusterClose(EventLoopGroup eventLoopGroup)
+        {
+            // shutdown driver connection immediatelly
+            eventLoopGroup.shutdownGracefully(0, 0, TimeUnit.SECONDS).syncUninterruptibly();
+        }
+    };
 
     /** Return the current server version if supported by the driver, else
      * the latest that is supported.
@@ -574,7 +585,9 @@ public abstract class CQLTester
                                          .addContactPoints(nativeAddr)
                                          .withClusterName("Test Cluster")
                                          .withPort(nativePort)
-                                         .withSocketOptions(socketOptions);
+                                         .withSocketOptions(socketOptions)
+                                         .withNettyOptions(IMMEDIATE_CONNECTION_SHUTDOWN_NETTY_OPTIONS);
+
         if (user != null)
             builder.withCredentials(user.username, user.password);
 
@@ -1329,6 +1342,10 @@ public abstract class CQLTester
         return executeFormattedQuery(formatViewQuery(KEYSPACE, query), values);
     }
 
+    /**
+     * Executes the provided query using the {@link ClientState#forInternalCalls()} as the expected ClientState. Note:
+     * this means permissions checking will not apply and queries will proceed regardless of role or guardrails.
+     */
     protected UntypedResultSet executeFormattedQuery(String query, Object... values) throws Throwable
     {
         UntypedResultSet rs;
@@ -1745,8 +1762,15 @@ public abstract class CQLTester
         assertInvalidThrowMessage(Optional.empty(), errorMessage, exception, query, values);
     }
 
-    // if a protocol version > Integer.MIN_VALUE is supplied, executes
-    // the query via the java driver, mimicking a real client.
+    /**
+     * Asserts that the query provided throws the exceptions provided.
+     *
+     * NOTE: This method uses {@link ClientState#forInternalCalls()} which sets the {@link ClientState#isInternal} value
+     * to true, nullifying any system keyspace or other permissions checking for tables.
+     *
+     * If a protocol version > Integer.MIN_VALUE is supplied, executes
+     * the query via the java driver, mimicking a real client.
+     */
     protected void assertInvalidThrowMessage(Optional<ProtocolVersion> protocolVersion,
                                              String errorMessage,
                                              Class<? extends Throwable> exception,
@@ -2125,12 +2149,12 @@ public abstract class CQLTester
         return new UserTypeValue(fieldNames, fieldValues);
     }
 
-    protected Object list(Object...values)
+    protected List<Object> list(Object...values)
     {
         return Arrays.asList(values);
     }
 
-    protected Object set(Object...values)
+    protected Set<Object> set(Object...values)
     {
         return ImmutableSet.copyOf(values);
     }
