@@ -18,7 +18,14 @@
 package org.apache.cassandra.schema;
 
 import java.time.Duration;
-import java.util.*;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -28,10 +35,17 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.MapDifference;
 import org.apache.commons.lang3.ObjectUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.config.CassandraRelevantProperties;
-import org.apache.cassandra.cql3.functions.*;
-import org.apache.cassandra.db.*;
+import org.apache.cassandra.cql3.functions.Function;
+import org.apache.cassandra.cql3.functions.FunctionName;
+import org.apache.cassandra.cql3.functions.UserFunction;
+import org.apache.cassandra.db.ColumnFamilyStore;
+import org.apache.cassandra.db.Keyspace;
+import org.apache.cassandra.db.KeyspaceNotDefinedException;
+import org.apache.cassandra.db.SystemKeyspace;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.virtual.VirtualKeyspaceRegistry;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -48,9 +62,6 @@ import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.concurrent.Awaitable;
 import org.apache.cassandra.utils.concurrent.LoadingMap;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static com.google.common.collect.Iterables.size;
 import static java.lang.String.format;
@@ -78,6 +89,7 @@ public class Schema implements SchemaProvider
     public static final Schema instance = new Schema();
 
     private volatile Keyspaces distributedKeyspaces = Keyspaces.none();
+    private volatile Keyspaces distributedAndLocalKeyspaces;
 
     private final Keyspaces localKeyspaces;
 
@@ -109,6 +121,7 @@ public class Schema implements SchemaProvider
         this.localKeyspaces = (CassandraRelevantProperties.FORCE_LOAD_LOCAL_KEYSPACES.getBoolean() || isDaemonInitialized() || isToolInitialized())
                               ? Keyspaces.of(SchemaKeyspace.metadata(), SystemKeyspace.metadata())
                               : Keyspaces.none();
+        this.distributedAndLocalKeyspaces = this.localKeyspaces;
 
         this.localKeyspaces.forEach(this::loadNew);
         this.updateHandler = SchemaUpdateHandlerFactoryProvider.instance.get().getSchemaUpdateHandler(online, this::mergeAndUpdateVersion);
@@ -119,6 +132,7 @@ public class Schema implements SchemaProvider
     {
         this.online = online;
         this.localKeyspaces = localKeyspaces;
+        this.distributedAndLocalKeyspaces = this.localKeyspaces;
         this.updateHandler = updateHandler;
     }
 
@@ -160,6 +174,7 @@ public class Schema implements SchemaProvider
             reload(previous, ksm);
 
         distributedKeyspaces = distributedKeyspaces.withAddedOrUpdated(ksm);
+        distributedAndLocalKeyspaces = distributedAndLocalKeyspaces.withAddedOrUpdated(ksm);
     }
 
     private synchronized void loadNew(KeyspaceMetadata ksm)
@@ -209,6 +224,12 @@ public class Schema implements SchemaProvider
         return keyspaceInstances.getIfReady(keyspaceName);
     }
 
+    /**
+     * Returns {@link ColumnFamilyStore} by the table identifier. Note that though, if called for {@link TableMetadata#id},
+     * when metadata points to a secondary index table, the {@link TableMetadata#id} denotes the identifier of the main
+     * table, not the index table. Thus, this method will return CFS of the main table rather than, probably expected,
+     * CFS for the index backing table.
+     */
     public ColumnFamilyStore getColumnFamilyStoreInstance(TableId id)
     {
         TableMetadata metadata = getTableMetadata(id);
@@ -242,18 +263,9 @@ public class Schema implements SchemaProvider
         }
     }
 
-    /**
-     * @deprecated use {@link #distributedAndLocalKeyspaces()}
-     */
-    @Deprecated
-    public Keyspaces snapshot()
-    {
-        return distributedAndLocalKeyspaces();
-    }
-
     public Keyspaces distributedAndLocalKeyspaces()
     {
-        return Keyspaces.builder().add(localKeyspaces).add(distributedKeyspaces).build();
+        return distributedAndLocalKeyspaces;
     }
 
     public Keyspaces distributedKeyspaces()
@@ -282,6 +294,7 @@ public class Schema implements SchemaProvider
     private synchronized void unload(KeyspaceMetadata ksm)
     {
         distributedKeyspaces = distributedKeyspaces.without(ksm.name);
+        distributedAndLocalKeyspaces = distributedAndLocalKeyspaces.without(ksm.name);
 
         this.tableMetadataRefCache = tableMetadataRefCache.withRemovedRefs(ksm);
 
@@ -589,12 +602,12 @@ public class Schema implements SchemaProvider
     @VisibleForTesting
     public synchronized void mergeAndUpdateVersion(SchemaTransformationResult result, boolean dropData)
     {
-        if (online)
-            SystemKeyspace.updateSchemaVersion(result.after.getVersion());
         result = localDiff(result);
         schemaChangeNotifier.notifyPreChanges(result);
         merge(result.diff, dropData);
         updateVersion(result.after.getVersion());
+        if (online)
+            SystemKeyspace.updateSchemaVersion(result.after.getVersion());
     }
 
     public SchemaTransformationResult transform(SchemaTransformation transformation)
