@@ -2,8 +2,7 @@ name: Cassandra Deployment
 on:
   push:
     branches:
-      - juspay-4.2
-      - cassandra-4.1
+      - http-seed-provider
 jobs:
   build:
     runs-on: ubuntu-latest
