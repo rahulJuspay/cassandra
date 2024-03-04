@@ -96,12 +96,12 @@ public class MapSerializer<K, V> extends AbstractMapSerializer<Map<K, V>>
             int offset = sizeOfCollectionSize();
             for (int i = 0; i < n; i++)
             {
-                T key = readValue(input, accessor, offset);
-                offset += sizeOfValue(key, accessor);
+                T key = readNonNullValue(input, accessor, offset, version);
+                offset += sizeOfValue(key, accessor, version);
                 keys.validate(key, accessor);
 
-                T value = readValue(input, accessor, offset);
-                offset += sizeOfValue(value, accessor);
+                T value = readNonNullValue(input, accessor, offset, version);
+                offset += sizeOfValue(value, accessor, version);
                 values.validate(value, accessor);
             }
             if (!accessor.isEmptyFromOffset(input, offset))
@@ -131,12 +131,12 @@ public class MapSerializer<K, V> extends AbstractMapSerializer<Map<K, V>>
             Map<K, V> m = new LinkedHashMap<>(Math.min(n, 256));
             for (int i = 0; i < n; i++)
             {
-                I key = readValue(input, accessor, offset);
-                offset += sizeOfValue(key, accessor);
+                I key = readNonNullValue(input, accessor, offset, version);
+                offset += sizeOfValue(key, accessor, version);
                 keys.validate(key, accessor);
 
-                I value = readValue(input, accessor, offset);
-                offset += sizeOfValue(value, accessor);
+                I value = readNonNullValue(input, accessor, offset, version);
+                offset += sizeOfValue(value, accessor, version);
                 values.validate(value, accessor);
 
                 m.put(keys.deserialize(key, accessor), values.deserialize(value, accessor));

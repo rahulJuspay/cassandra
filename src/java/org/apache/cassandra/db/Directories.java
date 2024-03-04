@@ -518,67 +518,36 @@ public class Directories
         Map<FileStore, Long> totalPerFileStore = new HashMap<>();
         for (Map.Entry<FileStore, Long> entry : newWriteSizesPerFileStore.entrySet())
         {
-            long addedForFilestore = entry.getValue() + compactionsRemainingPerFileStore.getOrDefault(entry.getKey(), 0L);
-            totalPerFileStore.merge(entry.getKey(), addedForFilestore, Long::sum);
+            if (DisallowedDirectories.isUnwritable(getLocationForDisk(dataDir)))
+                  continue;
+            DataDirectoryCandidate candidate = new DataDirectoryCandidate(dataDir);
+            // exclude directory if its total writeSize does not fit to data directory
+            logger.debug("DataDirectory {} has {} bytes available, checking if we can write {} bytes", dataDir.location, candidate.availableSpace, writeSize);
+            if (candidate.availableSpace < writeSize)
+            {
+                logger.warn("DataDirectory {} can't be used for compaction. Only {} is available, but {} is the minimum write size.",
+                            candidate.dataDirectory.location,
+                            FileUtils.stringifyFileSize(candidate.availableSpace),
+                            FileUtils.stringifyFileSize(writeSize));
+                continue;
+            }
+            totalAvailable += candidate.availableSpace;
         }
-        return hasDiskSpaceForCompactionsAndStreams(totalPerFileStore);
-    }
 
-    /**
-     * Checks if there is enough space on all file stores to write the given amount of data.
-     * The data to write should be the total amount, ongoing writes + new writes.
-     */
-    public static boolean hasDiskSpaceForCompactionsAndStreams(Map<FileStore, Long> totalToWrite)
-    {
-        for (Map.Entry<FileStore, Long> toWrite : totalToWrite.entrySet())
+        if (totalAvailable <= expectedTotalWriteSize)
         {
-            long availableForCompaction = getAvailableSpaceForCompactions(toWrite.getKey());
-            logger.debug("FileStore {} has {} bytes available, checking if we can write {} bytes", toWrite.getKey(), availableForCompaction, toWrite.getValue());
-            if (availableForCompaction < toWrite.getValue())
-                return false;
+            StringJoiner pathString = new StringJoiner(",", "[", "]");
+            for (DataDirectory p: paths)
+            {
+                pathString.add(p.location.toJavaIOFile().getAbsolutePath());
+            }
+            logger.warn("Insufficient disk space for compaction. Across {} there's only {} available, but {} is needed.",
+                        pathString.toString(),
+                        FileUtils.stringifyFileSize(totalAvailable),
+                        FileUtils.stringifyFileSize(expectedTotalWriteSize));
+            return false;
         }
         return true;
-    }
-
-    public static long getAvailableSpaceForCompactions(FileStore fileStore)
-    {
-        long availableSpace = 0;
-        availableSpace = FileStoreUtils.tryGetSpace(fileStore, FileStore::getUsableSpace, e -> { throw new FSReadError(e, fileStore.name()); })
-                         - DatabaseDescriptor.getMinFreeSpacePerDriveInBytes();
-        return Math.max(0L, Math.round(availableSpace * DatabaseDescriptor.getMaxSpaceForCompactionsPerDrive()));
-    }
-
-    public static Map<FileStore, Long> perFileStore(Map<File, Long> perDirectory, Function<File, FileStore> filestoreMapper)
-    {
-        return perDirectory.entrySet()
-                           .stream()
-                           .collect(Collectors.toMap(entry -> filestoreMapper.apply(entry.getKey()),
-                                                     Map.Entry::getValue,
-                                                     Long::sum));
-    }
-
-    public Set<FileStore> allFileStores(Function<File, FileStore> filestoreMapper)
-    {
-        return Arrays.stream(getWriteableLocations())
-                     .map(this::getLocationForDisk)
-                     .map(filestoreMapper)
-                     .collect(Collectors.toSet());
-    }
-
-    /**
-     * Gets the filestore for the actual directory where the sstables are stored.
-     * Handles the fact that an operator can symlink a table directory to a different filestore.
-     */
-    public static FileStore getFileStore(File directory)
-    {
-        try
-        {
-            return Files.getFileStore(directory.toPath());
-        }
-        catch (IOException e)
-        {
-            throw new FSReadError(e, directory);
-        }
     }
 
     public DataDirectory[] getWriteableLocations()
@@ -961,6 +930,18 @@ public class Directories
             return ImmutableMap.copyOf(components);
         }
 
+        /**
+         * Returns a sorted version of the {@code list} method.
+         * Descriptors are sorted by generation.
+         * @return a List of descriptors to their components.
+         */
+        public List<Map.Entry<Descriptor, Set<Component>>> sortedList()
+        {
+            List<Map.Entry<Descriptor, Set<Component>>> sortedEntries = new ArrayList<>(list().entrySet());
+            sortedEntries.sort((o1, o2) -> SSTableIdFactory.COMPARATOR.compare(o1.getKey().id, o2.getKey().id));
+            return sortedEntries;
+        }
+
         public List<File> listFiles()
         {
             filter();
@@ -1164,9 +1145,11 @@ public class Directories
             {
                 FileUtils.deleteRecursiveWithThrottle(snapshotDir, snapshotRateLimiter);
             }
-            catch (FSWriteError e)
+            catch (RuntimeException ex)
             {
-                throw e;
+                if (!snapshotDir.exists())
+                    return; // ignore
+                throw ex;
             }
         }
     }

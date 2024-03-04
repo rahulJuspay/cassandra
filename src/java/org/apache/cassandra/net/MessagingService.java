@@ -216,23 +216,7 @@ public class MessagingService extends MessagingServiceMBeanImpl
     public static final int current_version = VERSION_40;
     static AcceptVersions accept_messaging = new AcceptVersions(minimum_version, current_version);
     static AcceptVersions accept_streaming = new AcceptVersions(current_version, current_version);
-    static Map<Integer, Integer> versionOrdinalMap = Arrays.stream(Version.values()).collect(Collectors.toMap(v -> v.value, v -> v.ordinal()));
-
-    /**
-     * This is an optimisation to speed up the translation of the serialization
-     * version to the {@link Version} enum ordinal.
-     *
-     * @param version the serialization version
-     * @return a {@link Version} ordinal value
-     */
-    public static int getVersionOrdinal(int version)
-    {
-        Integer ordinal = versionOrdinalMap.get(version);
-        if (ordinal == null)
-            throw new IllegalStateException("Unkown serialization version: " + version);
-
-        return ordinal;
-    }
+    public static String SSL_FACTORY_CONTEXT_DESCRIPTION = "server_encryption_options";
 
     public enum Version
     {
@@ -377,10 +361,10 @@ public class MessagingService extends MessagingServiceMBeanImpl
      * @param handler callback interface which is used to pass the responses or
      *                suggest that a timeout occurred to the invoker of the send().
      */
-    public void sendWriteWithCallback(Message message, Replica to, AbstractWriteResponseHandler<?> handler, boolean allowHints)
+    public void sendWriteWithCallback(Message message, Replica to, AbstractWriteResponseHandler<?> handler)
     {
         assert message.callBackOnFailure();
-        callbacks.addWithExpiration(handler, message, to, handler.consistencyLevel(), allowHints);
+        callbacks.addWithExpiration(handler, message, to);
         send(message, to.endpoint(), null);
     }
 

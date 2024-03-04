@@ -320,4 +320,118 @@ public final class AtomicBTreePartition extends AbstractBTreePartition
             return wasteTracker + 1;
         return wasteTracker;
     }
+
+    @VisibleForTesting
+    public void unsafeSetHolder(Holder holder)
+    {
+        ref = holder;
+    }
+
+    @VisibleForTesting
+    public Holder unsafeGetHolder()
+    {
+        return ref;
+    }
+
+    // the function we provide to the btree utilities to perform any column replacements
+    private static final class RowUpdater implements UpdateFunction<Row, Row>, ColumnData.PostReconciliationFunction
+    {
+        final MemtableAllocator allocator;
+        final OpOrder.Group writeOp;
+        final UpdateTransaction indexer;
+        final Cloner cloner;
+        long dataSize;
+        long heapSize;
+        long colUpdateTimeDelta = Long.MAX_VALUE;
+        List<Row> inserted; // TODO: replace with walk of aborted BTree
+
+        DeletionInfo inputDeletionInfoCopy = null;
+
+        private RowUpdater(MemtableAllocator allocator, Cloner cloner, OpOrder.Group writeOp, UpdateTransaction indexer)
+        {
+            this.allocator = allocator;
+            this.writeOp = writeOp;
+            this.indexer = indexer;
+            this.cloner = cloner;
+        }
+
+        @Override
+        public Row insert(Row insert)
+        {
+            Row data = insert.clone(cloner); 
+            indexer.onInserted(insert);
+
+            this.dataSize += data.dataSize();
+            this.heapSize += data.unsharedHeapSizeExcludingData();
+            if (inserted == null)
+                inserted = new ArrayList<>();
+            inserted.add(data);
+            return data;
+        }
+
+        public Row merge(Row existing, Row update)
+        {
+            Row reconciled = Rows.merge(existing, update, this);
+            indexer.onUpdated(existing, reconciled);
+
+            if (inserted == null)
+                inserted = new ArrayList<>();
+            inserted.add(reconciled);
+
+            return reconciled;
+        }
+
+        public Row retain(Row existing)
+        {
+            return existing;
+        }
+
+        protected void reset()
+        {
+            this.dataSize = 0;
+            this.heapSize = 0;
+            if (inserted != null)
+                inserted.clear();
+        }
+
+        public Cell<?> merge(Cell<?> previous, Cell<?> insert)
+        {
+            if (insert == previous)
+                return insert;
+            long timeDelta = Math.abs(insert.timestamp() - previous.timestamp());
+            if (timeDelta < colUpdateTimeDelta)
+                colUpdateTimeDelta = timeDelta;
+            if (cloner != null)
+                insert = cloner.clone(insert);
+            dataSize += insert.dataSize() - previous.dataSize();
+            heapSize += insert.unsharedHeapSizeExcludingData() - previous.unsharedHeapSizeExcludingData();
+            return insert;
+        }
+
+        public ColumnData insert(ColumnData insert)
+        {
+            if (cloner != null)
+                insert = insert.clone(cloner);
+            dataSize += insert.dataSize();
+            heapSize += insert.unsharedHeapSizeExcludingData();
+            return insert;
+        }
+
+        @Override
+        public void delete(ColumnData existing)
+        {
+            dataSize -= existing.dataSize();
+            heapSize -= existing.unsharedHeapSizeExcludingData();
+        }
+
+        public void onAllocatedOnHeap(long heapSize)
+        {
+            this.heapSize += heapSize;
+        }
+
+        protected void finish()
+        {
+            allocator.onHeap().adjust(heapSize, writeOp);
+        }
+    }
 }

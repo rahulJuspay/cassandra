@@ -61,6 +61,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.psjava.util.AssertStatus.assertNotNull;
 
 public class CQLSSTableWriterTest
 {
@@ -1119,119 +1120,77 @@ public class CQLSSTableWriterTest
     }
 
     @Test
-    public void testWriteWithTimestamps() throws Exception
+    public void testWriteWithSorted() throws Exception
     {
-        long now = currentTimeMillis();
-        long then = now - 1000;
-        final String schema = "CREATE TABLE " + qualifiedTable + " ("
-                              + "  k int,"
-                              + "  v1 int,"
-                              + "  v2 int,"
-                              + "  v3 text,"
-                              + "  PRIMARY KEY (k)"
-                              + ")";
-
+        String schema = "CREATE TABLE " + qualifiedTable + " ("
+                        + "  k int PRIMARY KEY,"
+                        + "  v blob )";
         CQLSSTableWriter writer = CQLSSTableWriter.builder()
                                                   .inDirectory(dataDir)
                                                   .forTable(schema)
                                                   .using("INSERT INTO " + qualifiedTable +
-                                                         " (k, v1, v2, v3) VALUES (?,?,?,?) using timestamp ?" )
+                                                         " (k, v) VALUES (?, textAsBlob(?))" )
+                                                  .sorted()
                                                   .build();
-
-        // Note that, all other things being equal, Cassandra will sort these rows lexicographically, so we use "higher" values in the
-        // row we expect to "win" so that we're sure that it isn't just accidentally picked due to the row sorting.
-        writer.addRow( 1, 4, 5, "b", now); // This write should be the one found at the end because it has a higher timestamp
-        writer.addRow( 1, 2, 3, "a", then);
+        int rowCount = 10_000;
+        for (int i = 0; i < rowCount; i++)
+        {
+            writer.addRow(i, UUID.randomUUID().toString());
+        }
         writer.close();
         loadSSTables(dataDir, keyspace);
 
         UntypedResultSet resultSet = QueryProcessor.executeInternal("SELECT * FROM " + qualifiedTable);
-        assertEquals(1, resultSet.size());
-
+        assertEquals(rowCount, resultSet.size());
         Iterator<UntypedResultSet.Row> iter = resultSet.iterator();
-        UntypedResultSet.Row r1 = iter.next();
-        assertEquals(1, r1.getInt("k"));
-        assertEquals(4, r1.getInt("v1"));
-        assertEquals(5, r1.getInt("v2"));
-        assertEquals("b", r1.getString("v3"));
-        assertFalse(iter.hasNext());
+        for (int i = 0; i < rowCount; i++)
+        {
+            UntypedResultSet.Row row = iter.next();
+            assertEquals(i, row.getInt("k"));
+        }
     }
+
     @Test
-    public void testWriteWithTtl() throws Exception
+    public void testWriteWithSortedAndMaxSize() throws Exception
     {
-        final String schema = "CREATE TABLE " + qualifiedTable + " ("
-                              + "  k int,"
-                              + "  v1 int,"
-                              + "  v2 int,"
-                              + "  v3 text,"
-                              + "  PRIMARY KEY (k)"
-                              + ")";
-
-        CQLSSTableWriter.Builder builder = CQLSSTableWriter.builder()
-                                                         .inDirectory(dataDir)
-                                                         .forTable(schema)
-                                                         .using("INSERT INTO " + qualifiedTable +
-                                                                " (k, v1, v2, v3) VALUES (?,?,?,?) using TTL ?");
-        CQLSSTableWriter writer = builder.build();
-        // add a row that _should_ show up - 1 hour TTL
-        writer.addRow( 1, 2, 3, "a", 3600);
-        // Insert a row with a TTL of 1 second - should not appear in results once we sleep
-        writer.addRow( 2, 4, 5, "b", 1);
-        writer.close();
-        Thread.sleep(1200); // Slightly over 1 second, just to make sure
-        loadSSTables(dataDir, keyspace);
-
-        UntypedResultSet resultSet = QueryProcessor.executeInternal("SELECT * FROM " + qualifiedTable);
-        assertEquals(1, resultSet.size());
-
-        Iterator<UntypedResultSet.Row> iter = resultSet.iterator();
-        UntypedResultSet.Row r1 = iter.next();
-        assertEquals(1, r1.getInt("k"));
-        assertEquals(2, r1.getInt("v1"));
-        assertEquals(3, r1.getInt("v2"));
-        assertEquals("a", r1.getString("v3"));
-        assertFalse(iter.hasNext());
-    }
-    @Test
-    public void testWriteWithTimestampsAndTtl() throws Exception
-    {
-        final String schema = "CREATE TABLE " + qualifiedTable + " ("
-                              + "  k int,"
-                              + "  v1 int,"
-                              + "  v2 int,"
-                              + "  v3 text,"
-                              + "  PRIMARY KEY (k)"
-                              + ")";
-
+        String schema = "CREATE TABLE " + qualifiedTable + " ("
+                        + "  k int PRIMARY KEY,"
+                        + "  v blob )";
         CQLSSTableWriter writer = CQLSSTableWriter.builder()
                                                   .inDirectory(dataDir)
                                                   .forTable(schema)
                                                   .using("INSERT INTO " + qualifiedTable +
-                                                         " (k, v1, v2, v3) VALUES (?,?,?,?) using timestamp ? AND TTL ?" )
+                                                         " (k, v) VALUES (?, textAsBlob(?))")
+                                                  .sorted()
+                                                  .withMaxSSTableSizeInMiB(1)
                                                   .build();
-        // NOTE: It would be easier to make this a timestamp in the past, but Cassandra also has a _local_ deletion time
-        // which is based on the server's timestamp, so simply setting the timestamp to some time in the past
-        // doesn't actually do what you'd think it would do.
-        long oneSecondFromNow = TimeUnit.MILLISECONDS.toMicros(currentTimeMillis() + 1000);
-        // Insert some rows with a timestamp of 1 second from now, and different TTLs
-        // add a row that _should_ show up - 1 hour TTL
-        writer.addRow( 1, 2, 3, "a", oneSecondFromNow, 3600);
-        // Insert a row "two seconds ago" with a TTL of 1 second - should not appear in results
-        writer.addRow( 2, 4, 5, "b", oneSecondFromNow, 1);
+        int rowCount = 30_000;
+        // Max SSTable size is 1 MiB
+        // 30_000 rows should take 30_000 * (4 + 37) = 1.17 MiB > 1 MiB
+        for (int i = 0; i < rowCount; i++)
+        {
+            writer.addRow(i, UUID.randomUUID().toString());
+        }
         writer.close();
-        loadSSTables(dataDir, keyspace);
-        UntypedResultSet resultSet = QueryProcessor.executeInternal("SELECT * FROM " + qualifiedTable);
-        Thread.sleep(1200);
-        resultSet = QueryProcessor.executeInternal("SELECT * FROM " + qualifiedTable);
-        assertEquals(1, resultSet.size());
 
+        File[] dataFiles = dataDir.list(f -> f.name().endsWith(Component.DATA.type.repr));
+        assertNotNull(dataFiles);
+        assertEquals("The sorted writer should produce 2 sstables when max sstable size is configured",
+                     2, dataFiles.length);
+        long closeTo1MiBFileSize = Math.max(dataFiles[0].length(), dataFiles[1].length());
+        assertTrue("The file size should be close to 1MiB (with at most 50KiB error rate for the test)",
+                   Math.abs(1024 * 1024 - closeTo1MiBFileSize) < 50 * 1024);
+
+        loadSSTables(dataDir, keyspace);
+
+        UntypedResultSet resultSet = QueryProcessor.executeInternal("SELECT * FROM " + qualifiedTable);
+        assertEquals(rowCount, resultSet.size());
         Iterator<UntypedResultSet.Row> iter = resultSet.iterator();
-        UntypedResultSet.Row r1 = iter.next();
-        assertEquals(1, r1.getInt("k"));
-        assertEquals(2, r1.getInt("v1"));
-        assertEquals(3, r1.getInt("v2"));
-        assertEquals("a", r1.getString("v3"));
-        assertFalse(iter.hasNext());
+        for (int i = 0; i < rowCount; i++)
+        {
+            UntypedResultSet.Row row = iter.next();
+            assertEquals(i, row.getInt("k"));
+        }
     }
 
     private static void loadSSTables(File dataDir, String ks) throws ExecutionException, InterruptedException

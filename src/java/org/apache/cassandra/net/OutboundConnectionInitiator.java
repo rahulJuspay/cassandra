@@ -63,11 +63,7 @@ import org.apache.cassandra.utils.concurrent.ImmediateFuture;
 import org.apache.cassandra.utils.memory.BufferPools;
 
 import static java.util.concurrent.TimeUnit.*;
-import static org.apache.cassandra.auth.IInternodeAuthenticator.InternodeConnectionDirection.OUTBOUND;
-import static org.apache.cassandra.auth.IInternodeAuthenticator.InternodeConnectionDirection.OUTBOUND_PRECONNECT;
-import static org.apache.cassandra.net.InternodeConnectionUtils.DISCARD_HANDLER_NAME;
-import static org.apache.cassandra.net.InternodeConnectionUtils.SSL_HANDLER_NAME;
-import static org.apache.cassandra.net.InternodeConnectionUtils.certificates;
+import static org.apache.cassandra.net.MessagingService.SSL_FACTORY_CONTEXT_DESCRIPTION;
 import static org.apache.cassandra.net.MessagingService.VERSION_40;
 import static org.apache.cassandra.net.HandshakeProtocol.*;
 import static org.apache.cassandra.net.ConnectionType.STREAMING;
@@ -224,7 +220,10 @@ public class OutboundConnectionInitiator<SuccessType extends OutboundConnectionI
             if ((sslConnectionType == SslFallbackConnectionType.SERVER_CONFIG && settings.withEncryption())
                 || sslConnectionType == SslFallbackConnectionType.SSL || sslConnectionType == SslFallbackConnectionType.MTLS)
             {
-                SslContext sslContext = getSslContext(sslConnectionType);
+                // check if we should actually encrypt this connection
+                SslContext sslContext = SSLFactory.getOrCreateSslContext(settings.encryption, true,
+                                                                         ISslContextFactory.SocketType.CLIENT,
+                                                                         SSL_FACTORY_CONTEXT_DESCRIPTION);
                 // for some reason channel.remoteAddress() will return null
                 InetAddressAndPort address = settings.to;
                 InetSocketAddress peer = settings.encryption.require_endpoint_verification ? new InetSocketAddress(address.getAddress(), address.getPort()) : null;

@@ -98,13 +98,12 @@ public class BulkLoaderTest extends OfflineToolUtils
                                                         "globalEventExecutor-[1-9]-[1-9]",
                                                         "Shutdown-checker",
                                                         "cluster[0-9]-connection-reaper-[0-9]",
-                                                        "Attach Listener",
-                                                        "process reaper"},
-                                         false);
-    assertSchemaNotLoaded();
-    assertCLSMNotLoaded();
-    assertSystemKSNotLoaded();
-    assertKeyspaceNotLoaded();
+                                                        // the driver isn't expected to terminate threads on close synchronously (CASSANDRA-19000)
+                                                        "cluster[0-9]-nio-worker-[0-9]" });
+        assertSchemaNotLoaded();
+        assertCLSMNotLoaded();
+        assertSystemKSNotLoaded();
+        assertKeyspaceNotLoaded();
         assertServerNotLoaded();
     }
 
@@ -129,12 +128,11 @@ public class BulkLoaderTest extends OfflineToolUtils
                                                         "globalEventExecutor-[1-9]-[1-9]",
                                                         "Shutdown-checker",
                                                         "cluster[0-9]-connection-reaper-[0-9]",
-                                                        "Attach Listener",
-                                                        "process reaper"},
-                                         false);
-    assertSchemaNotLoaded();
-    assertCLSMNotLoaded();
-    assertSystemKSNotLoaded();
+                                                        // the driver isn't expected to terminate threads on close synchronously (CASSANDRA-19000)
+                                                        "cluster[0-9]-nio-worker-[0-9]" });
+        assertSchemaNotLoaded();
+        assertCLSMNotLoaded();
+        assertSystemKSNotLoaded();
         assertKeyspaceNotLoaded();
         assertServerNotLoaded();
     }

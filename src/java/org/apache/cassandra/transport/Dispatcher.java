@@ -101,14 +101,7 @@ public class Dispatcher
 
     public void dispatch(Channel channel, Message.Request request, FlushItemConverter forFlusher, Overload backpressure)
     {
-        // if native_transport_max_auth_threads is < 1, don't delegate to new pool on auth messages
-        boolean isAuthQuery = DatabaseDescriptor.getNativeTransportMaxAuthThreads() > 0 &&
-                              (request.type == Message.Type.AUTH_RESPONSE || request.type == Message.Type.CREDENTIALS);
-
-        // Importantly, the authExecutor will handle the AUTHENTICATE message which may be CPU intensive.
-        LocalAwareExecutorPlus executor = isAuthQuery ? authExecutor : requestExecutor;
-
-        executor.submit(new RequestProcessor(channel, request, forFlusher, backpressure));
+        requestExecutor.submit(new RequestProcessor(channel, request, forFlusher, backpressure));
         ClientMetrics.instance.markRequestDispatched();
     }
 

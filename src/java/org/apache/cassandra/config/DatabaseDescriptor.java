@@ -3499,6 +3499,16 @@ public class DatabaseDescriptor
         conf.repair_session_space = new DataStorageSpec.IntMebibytesBound(sizeInMiB);
     }
 
+    public static int getConcurrentMerkleTreeRequests()
+    {
+        return conf.concurrent_merkle_tree_requests;
+    }
+
+    public static void setConcurrentMerkleTreeRequests(int value)
+    {
+        conf.concurrent_merkle_tree_requests = value;
+    }
+
     public static int getPaxosRepairParallelism()
     {
         return conf.paxos_repair_parallelism;
@@ -3796,6 +3806,11 @@ public class DatabaseDescriptor
     public static FullQueryLoggerOptions getFullQueryLogOptions()
     {
         return  conf.full_query_logging_options;
+    }
+
+    public static void setFullQueryLogOptions(FullQueryLoggerOptions options)
+    {
+        conf.full_query_logging_options = options;
     }
 
     public static boolean getBlockForPeersInRemoteDatacenters()

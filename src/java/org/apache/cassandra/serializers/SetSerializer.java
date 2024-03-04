@@ -85,8 +85,8 @@ public class SetSerializer<T> extends AbstractMapSerializer<Set<T>>
             int offset = sizeOfCollectionSize();
             for (int i = 0; i < n; i++)
             {
-                V value = readValue(input, accessor, offset);
-                offset += sizeOfValue(value, accessor);
+                V value = readNonNullValue(input, accessor, offset, version);
+                offset += sizeOfValue(value, accessor, version);
                 elements.validate(value, accessor);
             }
             if (!accessor.isEmptyFromOffset(input, offset))
@@ -117,8 +117,8 @@ public class SetSerializer<T> extends AbstractMapSerializer<Set<T>>
 
             for (int i = 0; i < n; i++)
             {
-                V value = readValue(input, accessor, offset);
-                offset += sizeOfValue(value, accessor);
+                V value = readNonNullValue(input, accessor, offset, version);
+                offset += sizeOfValue(value, accessor, version);
                 elements.validate(value, accessor);
                 l.add(elements.deserialize(value, accessor));
             }

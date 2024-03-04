@@ -45,8 +45,9 @@ public interface ActiveRepairServiceMBean
     @Deprecated
     public int getRepairSessionSpaceInMebibytes();
 
-    public void setRepairSessionSpaceInMiB(int sizeInMebibytes);
-    public int getRepairSessionSpaceInMiB();
+    int getConcurrentMerkleTreeRequests();
+
+    void setConcurrentMerkleTreeRequests(int value);
 
     public boolean getUseOffheapMerkleTrees();
     public void setUseOffheapMerkleTrees(boolean value);
