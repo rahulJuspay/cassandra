@@ -8,13 +8,11 @@ import java.util.Map;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.net.http.HttpRequest;
-import java.util.function.Supplier;
 import java.net.URI;
 import org.apache.cassandra.config.Config;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class HttpSeedProvider implements SeedProvider
 {

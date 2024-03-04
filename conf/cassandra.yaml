@@ -1451,12 +1451,6 @@ trace_type_repair_ttl: 7d
 # As of Cassandra 3.0 there is a sandbox in place that should prevent execution of evil code.
 user_defined_functions_enabled: false
 
-# Enables scripted UDFs (JavaScript UDFs).
-# Java UDFs are always enabled, if user_defined_functions_enabled is true.
-# Enable this option to be able to use UDFs with "language javascript" or any custom JSR-223 provider.
-# This option has no effect, if user_defined_functions_enabled is false.
-scripted_user_defined_functions_enabled: false
-
 # Enables encrypting data at-rest (on disk). Different key providers can be plugged in, but the default reads from
 # a JCE-style keystore. A single keystore can hold multiple keys, but the one referenced by
 # the "key_alias" is the only key that will be used for encrypt opertaions; previously used keys
@@ -1661,6 +1655,14 @@ report_unconfirmed_repaired_data_mismatches: false
 # Delays on auth resolution can lead to a thundering herd problem on reconnects; this option will enable
 # warming of auth caches prior to node completing startup. See CASSANDRA-16958
 # auth_cache_warming_enabled: false
+
+# If enabled, dynamic data masking allows to attach CQL masking functions to the columns of a table.
+# Users without the UNMASK permission will see an obscured version of the values of the columns with an attached mask.
+# If dynamic data masking is disabled it won't be allowed to create new column masks, although it will still be possible
+# to drop any previously existing masks. Also, any existing mask will be ignored at query time, so all users will see
+# the clear values of the masked columns.
+# Defaults to false to disable dynamic data masking.
+# dynamic_data_masking_enabled: false
 
 #########################
 # EXPERIMENTAL FEATURES #
@@ -1912,3 +1914,14 @@ drop_compact_storage_enabled: false
 #    excluded_keyspaces: # comma separated list of keyspaces to exclude from the check
 #    excluded_tables: # comma separated list of keyspace.table pairs to exclude from the check
 
+# Supported sstable formats
+# This is a list of elements consisting of class_name and parameters, where class_name should point to the class
+# implementing org.apache.cassandra.io.sstable.format.SSTableFormat. Parameters must include unique 'id' integer
+# which is used in some serialization to denote the format type in a compact way (such as local key cache); and 'name'
+# which will be used to recognize the format type - in particular that name will be used in sstable file names and in
+# stream headers so the name has to be the same for the same format across all the nodes in the cluster.
+sstable_formats:
+  - class_name: org.apache.cassandra.io.sstable.format.big.BigFormat
+    parameters:
+      id: 0
+      name: big

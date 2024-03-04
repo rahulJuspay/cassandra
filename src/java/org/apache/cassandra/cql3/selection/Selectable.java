@@ -79,7 +79,7 @@ public interface Selectable extends AssignmentTestable
      */
     public default boolean processesSelection()
     {
-        // ColumnMetadata is the only case that returns false and override this
+        // ColumnMetadata is the only case that returns false (if the column is not masked) and overrides this
         return true;
     }
 
@@ -156,7 +156,7 @@ public interface Selectable extends AssignmentTestable
             /*
              * expectedType will be null if we have no constraint on what the type should be. For instance, if this term is a bind marker:
              *   - it will be null if we do "SELECT ? FROM foo"
-             *   - it won't be null (and be LongType) if we do "SELECT bigintAsBlob(?) FROM foo" because the function constrain it.
+             *   - it won't be null (and be LongType) if we do "SELECT bigint_as_blob(?) FROM foo" because the function constrain it.
              *
              * In the first case, we have to error out: we need to infer the type of the metadata of a SELECT at preparation time, which we can't
              * here (users will have to do "SELECT (varint)? FROM foo" for instance).
@@ -322,7 +322,7 @@ public interface Selectable extends AssignmentTestable
             @Override
             public WritetimeOrTTL prepare(TableMetadata table)
             {
-                return new WritetimeOrTTL(column.prepare(table), selected.prepare(table), kind);
+                return new WritetimeOrTTL((ColumnMetadata) column.prepare(table), selected.prepare(table), kind);
             }
         }
     }
@@ -1240,10 +1240,15 @@ public interface Selectable extends AssignmentTestable
             this.quoted = quoted;
         }
 
-        @Override
-        public ColumnMetadata prepare(TableMetadata cfm)
+        public ColumnMetadata columnMetadata(TableMetadata cfm)
         {
             return cfm.getExistingColumn(ColumnIdentifier.getInterned(text, quoted));
+        }
+
+        @Override
+        public Selectable prepare(TableMetadata cfm)
+        {
+            return columnMetadata(cfm);
         }
 
         public FieldIdentifier toFieldIdentifier()
